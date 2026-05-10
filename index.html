@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no, maximum-scale=1">
+  <meta name="theme-color" content="#070709">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="description" content="Danbron — Tu asistente IA que te dice exactamente qué hacer cada día para salir de deudas, recuperar tu tiempo y mejorar tu vida.">
+  <title>Danbron — Tu vida, optimizada</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="app">
+
+    <!-- SPLASH -->
+    <div class="screen active" id="screen-splash">
+      <div class="splash-logo">danbron</div>
+      <div class="splash-tagline">tu vida, optimizada</div>
+    </div>
+
+    <!-- ONBOARDING -->
+    <div class="screen" id="screen-onboarding">
+      <div class="onboard-wrap">
+        <div class="brand-logo">danbron <span>by bron</span></div>
+        <div id="onboard-content"></div>
+        <div class="ob-footer">
+          <div class="ob-progress" id="ob-progress"></div>
+          <button class="btn-primary" id="ob-btn" onclick="App.obNext()">Continuar →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- HOME -->
+    <div class="screen" id="screen-home" style="padding-bottom:90px">
+      <div id="home-content"></div>
+    </div>
+
+    <!-- CHAT -->
+    <div class="screen" id="screen-chat" style="padding-bottom:0"></div>
+
+    <!-- PROGRESS -->
+    <div class="screen" id="screen-progress" style="padding-bottom:90px">
+      <div id="progress-content"></div>
+    </div>
+
+    <!-- SETTINGS -->
+    <div class="screen" id="screen-settings" style="padding-bottom:90px">
+      <div id="settings-content"></div>
+    </div>
+
+    <!-- BOTTOM NAV -->
+    <div id="bottom-nav" class="bottom-nav" style="display:none"></div>
+  </div>
+
+  <!-- API KEY MODAL -->
+  <div class="modal-overlay" id="api-modal">
+    <div class="modal">
+      <h2>🔑 API Key de Anthropic</h2>
+      <p>Bron usa Claude para pensar. Ingresa tu API key para activar la inteligencia artificial. Tu key se guarda solo en tu dispositivo.</p>
+      <input class="input-field" id="api-key-input" type="password" placeholder="sk-ant-...">
+      <div style="display:flex; gap:10px; margin-top:8px">
+        <button class="btn-primary" style="background:var(--bg3); color:var(--text2); flex:1" onclick="App.closeApiModal()">Cancelar</button>
+        <button class="btn-primary" style="flex:1" onclick="App.saveApiKey()">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST -->
+  <div class="toast" id="toast"></div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+{
+  "name": "danbron-desktop",
+  "version": "1.0.0",
+  "description": "Danbron Desktop — Tu asistente Bron nativo para Windows",
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.0.0"
+  }
+}

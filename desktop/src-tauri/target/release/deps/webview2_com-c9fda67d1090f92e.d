@@ -1,0 +1,10 @@
+c:\Users\Boy-Torres\Desktop\danbron\desktop\src-tauri\target\release\deps\webview2_com-c9fda67d1090f92e.d: C:\Users\Boy-Torres\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\webview2-com-0.38.2\src\lib.rs C:\Users\Boy-Torres\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\webview2-com-0.38.2\src\callback.rs C:\Users\Boy-Torres\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\webview2-com-0.38.2\src\options.rs C:\Users\Boy-Torres\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\webview2-com-0.38.2\src\pwstr.rs
+
+c:\Users\Boy-Torres\Desktop\danbron\desktop\src-tauri\target\release\deps\libwebview2_com-c9fda67d1090f92e.rlib: C:\Users\Boy-Torres\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\webview2-com-0.38.2\src\lib.rs C:\Users\Boy-Torres\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\webview2-com-0.38.2\src\callback.rs C:\Users\Boy-Torres\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\webview2-com-0.38.2\src\options.rs C:\Users\Boy-Torres\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\webview2-com-0.38.2\src\pwstr.rs
+
+c:\Users\Boy-Torres\Desktop\danbron\desktop\src-tauri\target\release\deps\libwebview2_com-c9fda67d1090f92e.rmeta: C:\Users\Boy-Torres\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\webview2-com-0.38.2\src\lib.rs C:\Users\Boy-Torres\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\webview2-com-0.38.2\src\callback.rs C:\Users\Boy-Torres\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\webview2-com-0.38.2\src\options.rs C:\Users\Boy-Torres\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\webview2-com-0.38.2\src\pwstr.rs
+
+C:\Users\Boy-Torres\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\webview2-com-0.38.2\src\lib.rs:
+C:\Users\Boy-Torres\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\webview2-com-0.38.2\src\callback.rs:
+C:\Users\Boy-Torres\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\webview2-com-0.38.2\src\options.rs:
+C:\Users\Boy-Torres\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\webview2-com-0.38.2\src\pwstr.rs:

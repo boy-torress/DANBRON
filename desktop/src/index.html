@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Danbron — Bron Desktop</title>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&family=Syne:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Custom Titlebar (draggable) -->
+    <div class="titlebar" id="titlebar">
+        <div class="titlebar-left">
+            <div class="titlebar-icon"></div>
+            <span class="titlebar-title">danbron</span>
+        </div>
+        <div class="titlebar-controls">
+            <button class="titlebar-btn pin-btn" id="pinBtn" title="Mantener arriba">📌</button>
+            <button class="titlebar-btn" id="minimizeBtn" title="Minimizar">─</button>
+            <button class="titlebar-btn close-btn" id="closeBtn" title="Cerrar a bandeja">✕</button>
+        </div>
+    </div>
+
+    <div class="app-content">
+        <!-- Sync Screen -->
+        <div class="screen active" id="setupScreen">
+            <div class="setup-container">
+                <canvas id="mascotCanvas" width="160" height="160"></canvas>
+                <h2>Bienvenido a <span class="gold">Danbron</span></h2>
+                <p class="setup-sub">Tu asistente personal en el computador. Sincroniza con tu teléfono para acceso completo.</p>
+                <div class="input-group" style="margin-top: 20px;">
+                    <label>Email</label>
+                    <input type="email" id="emailInput" placeholder="tu@email.com">
+                </div>
+                <button class="btn-gold" id="startBtn">Conectar →</button>
+                <button class="btn-ghost" id="skipSyncBtn" style="margin-top: 12px; width: 100%;">Usar sin sincronizar</button>
+            </div>
+        </div>
+
+        <!-- Chat Screen -->
+        <div class="screen" id="chatScreen">
+            <div class="chat-header">
+                <div class="chat-header-left">
+                    <canvas id="chatMascot" width="36" height="36"></canvas>
+                    <div>
+                        <div class="chat-name">Bron</div>
+                        <div class="chat-status"><span class="status-dot"></span>en línea · desktop</div>
+                    </div>
+                </div>
+                <div class="chat-header-right">
+                    <button class="icon-btn" id="profileBtn" title="Perfil">👤</button>
+                    <button class="icon-btn" id="progressBtn" title="Progreso">📊</button>
+                    <button class="icon-btn" id="notesBtn" title="Notas">📝</button>
+                    <button class="icon-btn" id="settingsBtn" title="Configuración">⚙️</button>
+                    <button class="icon-btn" id="clearChatBtn" title="Limpiar chat">🗑️</button>
+                </div>
+            </div>
+
+            <div class="messages-container" id="messagesContainer"></div>
+
+            <div class="chat-input-container">
+                <div class="chat-input-wrapper">
+                    <input type="text" id="chatInput" placeholder="Escribe a Bron..." autocomplete="off">
+                    <button class="send-btn" id="sendBtn">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                    </button>
+                </div>
+                <div class="input-footer">Powered by IA · Bron Desktop v1.0</div>
+            </div>
+        </div>
+
+        <!-- Profile Screen -->
+        <div class="screen" id="profileScreen">
+            <div class="screen-header">
+                <h2>Mi Perfil</h2>
+                <button class="icon-btn" id="closeProfileBtn" title="Cerrar">✕</button>
+            </div>
+            <div class="screen-content" id="profileContent"></div>
+        </div>
+
+        <!-- Progress Screen -->
+        <div class="screen" id="progressScreen">
+            <div class="screen-header">
+                <h2>Mi Progreso 📊</h2>
+                <button class="icon-btn" id="closeProgressBtn" title="Cerrar">✕</button>
+            </div>
+            <div class="screen-content" id="progressContent"></div>
+        </div>
+
+        <!-- Notes Screen -->
+        <div class="screen" id="notesScreen">
+            <div class="screen-header">
+                <h2>Mis Notas</h2>
+                <button class="icon-btn" id="closeNotesBtn" title="Cerrar">✕</button>
+            </div>
+            <div class="screen-content" id="notesContent"></div>
+        </div>
+
+        <!-- Settings Modal -->
+        <div class="modal-overlay" id="settingsModal">
+            <div class="modal-content">
+                <h3>💻 Configuración</h3>
+                <div style="margin-bottom: 20px;">
+                    <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 8px;">Estado de sincronización:</p>
+                    <p style="font-weight: 600; color: var(--gold);"><span id="syncStatus" class="gold">No sincronizado</span></p>
+                </div>
+                <button class="btn-gold" id="pairingBtn" style="width: 100%; margin-bottom: 12px; display: none;">📱 Emparejar Teléfono</button>
+                <div class="modal-buttons">
+                    <button class="btn-ghost" id="cancelSettingsBtn">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="sync-client.js"></script>
+    <script src="windows-tracker.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
