@@ -3,7 +3,7 @@
  * Handles device pairing, data sync, and system monitoring
  */
 
-const BACKEND_URL = "https://ykafkyoajmqlapamdfsc.supabase.co/rest/v1"; // Danbron Supabase backend
+const BACKEND_URL = "https://danbron-production.up.railway.app/api"; // Danbron Railway backend
 const API_TIMEOUT = 30000; // 30 seconds
 
 // Storage keys

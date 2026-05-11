@@ -116,7 +116,6 @@ fun DanbronAppScreen() {
                 HomeScreen(vm) {
                     navController.navigate("chat") {
                         launchSingleTop = true
-                        saveState = true
                     }
                 }
             }

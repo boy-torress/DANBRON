@@ -5,12 +5,12 @@ plugins {
 
 android {
     namespace = "com.danbron.app"
-    compileSdk = 34
+    compileSdk = 32
 
     defaultConfig {
         applicationId = "com.danbron.app"
         minSdk = 26
-        targetSdk = 34
+        targetSdk = 32
         versionCode = 1
         versionName = "1.0.0"
         
@@ -41,7 +41,10 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
 
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
     composeOptions { kotlinCompilerExtensionVersion = "1.5.5" }
 }
 

@@ -28,12 +28,7 @@ fun EditProfileScreen(vm: MainViewModel, navController: NavController) {
     var income by remember { mutableStateOf(u.income.toString()) }
     var expenses by remember { mutableStateOf(u.expenses.toString()) }
     var debt by remember { mutableStateOf(u.debt.toString()) }
-    var employment by remember { mutableStateOf(u.employment) }
-    var healthFocus by remember { mutableStateOf(u.healthFocus) }
     var isSaving by remember { mutableStateOf(false) }
-
-    val employmentOptions = listOf("unemployed", "part_time", "full_time", "entrepreneur", "retired")
-    val healthOptions = listOf("none", "weight_loss", "fitness", "nutrition", "mental_health", "disease_management")
 
     Column(
         Modifier.fillMaxSize().background(BgPrimary).verticalScroll(rememberScrollState())
@@ -46,7 +41,7 @@ fun EditProfileScreen(vm: MainViewModel, navController: NavController) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Editar Perfil", style = DanbronType.headlineMedium, color = TextPrimary)
+                Text("Editar Perfil", style = MaterialTheme.typography.headlineMedium, color = TextPrimary)
                 Text("✕", fontSize = 24.sp, color = TextSecondary, modifier = Modifier.clickable { navController.popBackStack() })
             }
         }
@@ -56,7 +51,7 @@ fun EditProfileScreen(vm: MainViewModel, navController: NavController) {
         // Name field
         StaggeredEntrance(1) {
             Column(Modifier.padding(horizontal = 20.dp)) {
-                Text("Nombre", style = DanbronType.labelMedium, color = TextTertiary)
+                Text("Nombre", style = MaterialTheme.typography.labelMedium, color = TextTertiary)
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
                     value = name, onValueChange = { name = it },
@@ -76,7 +71,7 @@ fun EditProfileScreen(vm: MainViewModel, navController: NavController) {
         // Financial fields
         StaggeredEntrance(2) {
             Column(Modifier.padding(horizontal = 20.dp)) {
-                Text("Situación Financiera", style = DanbronType.labelMedium, color = TextTertiary)
+                Text("Situación Financiera", style = MaterialTheme.typography.labelMedium, color = TextTertiary)
                 Spacer(Modifier.height(12.dp))
 
                 // Income
@@ -119,71 +114,6 @@ fun EditProfileScreen(vm: MainViewModel, navController: NavController) {
             }
         }
 
-        Spacer(Modifier.height(20.dp))
-
-        // Employment
-        StaggeredEntrance(3) {
-            Column(Modifier.padding(horizontal = 20.dp)) {
-                Text("Situación Laboral", style = DanbronType.labelMedium, color = TextTertiary)
-                Spacer(Modifier.height(12.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
-                    employmentOptions.forEach { opt ->
-                        val isSelected = employment == opt
-                        Box(
-                            Modifier.clip(RoundedCornerShape(12.dp))
-                                .background(if (isSelected) Gold else BgTertiary)
-                                .border(1.dp, if (isSelected) Gold else Border, RoundedCornerShape(12.dp))
-                                .clickable { employment = opt }
-                                .padding(12.dp, 8.dp)
-                        ) {
-                            val label = when (opt) {
-                                "unemployed" -> "Desempleado"
-                                "part_time" -> "Media Jornada"
-                                "full_time" -> "Tiempo Completo"
-                                "entrepreneur" -> "Emprendedor"
-                                "retired" -> "Jubilado"
-                                else -> opt
-                            }
-                            Text(label, style = DanbronType.labelSmall, color = if (isSelected) Color(0xFF0A0A0F) else TextTertiary)
-                        }
-                    }
-                }
-            }
-        }
-
-        Spacer(Modifier.height(20.dp))
-
-        // Health Focus
-        StaggeredEntrance(4) {
-            Column(Modifier.padding(horizontal = 20.dp)) {
-                Text("Enfoque de Salud", style = DanbronType.labelMedium, color = TextTertiary)
-                Spacer(Modifier.height(12.dp))
-                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    healthOptions.forEach { opt ->
-                        val isSelected = healthFocus == opt
-                        Box(
-                            Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
-                                .background(if (isSelected) Gold.copy(alpha = 0.2f) else BgTertiary)
-                                .border(1.dp, if (isSelected) Gold else Border, RoundedCornerShape(12.dp))
-                                .clickable { healthFocus = opt }
-                                .padding(16.dp, 12.dp)
-                        ) {
-                            val label = when (opt) {
-                                "none" -> "Sin enfoque"
-                                "weight_loss" -> "Pérdida de peso"
-                                "fitness" -> "Fitness"
-                                "nutrition" -> "Nutrición"
-                                "mental_health" -> "Salud Mental"
-                                "disease_management" -> "Manejo de Enfermedad"
-                                else -> opt
-                            }
-                            Text(label, style = DanbronType.labelSmall, color = TextPrimary)
-                        }
-                    }
-                }
-            }
-        }
-
         Spacer(Modifier.height(30.dp))
 
         // Action buttons
@@ -203,9 +133,7 @@ fun EditProfileScreen(vm: MainViewModel, navController: NavController) {
                                 name = name.ifBlank { u.name },
                                 income = income.toDoubleOrNull() ?: u.income,
                                 expenses = expenses.toDoubleOrNull() ?: u.expenses,
-                                debt = debt.toDoubleOrNull() ?: u.debt,
-                                employment = employment,
-                                healthFocus = healthFocus
+                                debt = debt.toDoubleOrNull() ?: u.debt
                             )
                             vm.updateUserProfile(updatedUser)
                             vm.toast("Perfil actualizado ✓")

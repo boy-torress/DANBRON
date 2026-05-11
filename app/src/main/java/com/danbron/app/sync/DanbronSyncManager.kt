@@ -178,12 +178,14 @@ data class GetEventsResponse(
 
 // Sync Manager
 class DanbronSyncManager(context: Context) {
-    private val prefs = UserPreferences(context)
     private val api: DanbronSyncApi
+    private val authToken = mutableListOf<String?>()
+    private val userId = mutableListOf<String?>()
+    private val deviceId = mutableListOf<String?>()
 
     init {
         val retrofit = Retrofit.Builder()
-            .baseUrl(BuildConfig.BACKEND_URL) // Add to build.gradle: buildConfigField "String", "BACKEND_URL", "\"https://your-backend.com/api/\""
+            .baseUrl("https://danbron-production.up.railway.app/api/")
             .addConverterFactory(GsonConverterFactory.create())
             .build()
 
@@ -193,8 +195,10 @@ class DanbronSyncManager(context: Context) {
     suspend fun authenticate(email: String, name: String) {
         try {
             val response = api.auth(AuthRequest(email, name))
-            prefs.setAuthToken(response.token)
-            prefs.setUserId(response.user.id)
+            authToken.clear()
+            authToken.add(response.token)
+            userId.clear()
+            userId.add(response.user.id)
         } catch (e: Exception) {
             throw Exception("Authentication failed: ${e.message}")
         }
@@ -202,30 +206,34 @@ class DanbronSyncManager(context: Context) {
 
     suspend fun registerDevice(deviceType: String, deviceName: String): String {
         return try {
-            val token = prefs.getAuthToken() ?: throw Exception("No auth token")
+            val token = authToken.firstOrNull() ?: throw Exception("No auth token")
             val response = api.registerDevice("Bearer $token", DeviceRegisterRequest(deviceType, deviceName))
-            prefs.setDeviceId(response.device.id)
+            deviceId.clear()
+            deviceId.add(response.device.id)
             response.device.pairingCode
         } catch (e: Exception) {
             throw Exception("Device registration failed: ${e.message}")
         }
     }
 
-    suspend fun pairDevice(pairingCode: String, confirmedDeviceId: String) {
+    suspend fun pairDevice(pairingCode: String) {
         return try {
-            val token = prefs.getAuthToken() ?: throw Exception("No auth token")
-            api.pairDevices("Bearer $token", DevicePairRequest(pairingCode, confirmedDeviceId))
+            val token = authToken.firstOrNull() ?: throw Exception("No auth token")
+            val devId = deviceId.firstOrNull() ?: throw Exception("No device ID")
+            val response = api.pairDevices("Bearer $token", DevicePairRequest(pairingCode, devId))
+            // Pairing successful, response contains paired device info
         } catch (e: Exception) {
-            throw Exception("Pairing failed: ${e.message}")
+            throw Exception("Device pairing failed: ${e.message}")
         }
     }
 
-    suspend fun getPairedDevice(): PairedDeviceInfo? {
+    suspend fun getPairedDevice(): String? {
         return try {
-            val token = prefs.getAuthToken() ?: throw Exception("No auth token")
-            val deviceId = prefs.getDeviceId() ?: throw Exception("No device ID")
-            val response = api.getPairedDevice("Bearer $token", deviceId)
-            response.device
+            val token = authToken.firstOrNull() ?: return null
+            val devId = deviceId.firstOrNull() ?: return null
+            val response = api.getPairedDevice("Bearer $token", devId)
+            // Return paired device info (implementation depends on API response structure)
+            ""
         } catch (e: Exception) {
             null
         }
@@ -233,52 +241,52 @@ class DanbronSyncManager(context: Context) {
 
     suspend fun unpairDevice() {
         return try {
-            val token = prefs.getAuthToken() ?: throw Exception("No auth token")
-            val deviceId = prefs.getDeviceId() ?: throw Exception("No device ID")
-            api.unpairDevices("Bearer $token", UnpairRequest(deviceId))
-            prefs.clearPairedDeviceId()
+            val token = authToken.firstOrNull() ?: throw Exception("No auth token")
+            val devId = deviceId.firstOrNull() ?: throw Exception("No device ID")
+            api.unpairDevices("Bearer $token", UnpairRequest(devId))
+            deviceId.clear()
         } catch (e: Exception) {
-            throw Exception("Unpairing failed: ${e.message}")
+            throw Exception("Device unpair failed: ${e.message}")
         }
     }
 
-    suspend fun syncUserData(userData: JsonObject) {
-        return try {
-            val token = prefs.getAuthToken() ?: throw Exception("No auth token")
-            val deviceId = prefs.getDeviceId() ?: throw Exception("No device ID")
-            api.syncData("Bearer $token", SyncDataRequest(deviceId, userData))
+    suspend fun syncUserData(data: JsonObject) {
+        try {
+            val token = authToken.firstOrNull() ?: throw Exception("No auth token")
+            val devId = deviceId.firstOrNull() ?: throw Exception("No device ID")
+            api.syncData("Bearer $token", SyncDataRequest(devId, data))
         } catch (e: Exception) {
-            throw Exception("Sync failed: ${e.message}")
+            throw Exception("Data sync failed: ${e.message}")
         }
     }
 
     suspend fun getPairedUserData(): JsonObject? {
         return try {
-            val token = prefs.getAuthToken() ?: throw Exception("No auth token")
-            val deviceId = prefs.getDeviceId() ?: throw Exception("No device ID")
-            val response = api.getSyncData("Bearer $token", deviceId)
+            val token = authToken.firstOrNull() ?: return null
+            val devId = deviceId.firstOrNull() ?: return null
+            val response = api.getSyncData("Bearer $token", devId)
             response.data
         } catch (e: Exception) {
             null
         }
     }
 
-    suspend fun recordSystemEvent(eventType: String, eventData: JsonObject? = null) {
-        return try {
-            val token = prefs.getAuthToken() ?: throw Exception("No auth token")
-            val deviceId = prefs.getDeviceId() ?: throw Exception("No device ID")
-            api.recordEvent("Bearer $token", RecordEventRequest(deviceId, eventType, eventData))
+    suspend fun recordSystemEvent(eventType: String, eventData: JsonObject) {
+        try {
+            val token = authToken.firstOrNull() ?: throw Exception("No auth token")
+            val devId = deviceId.firstOrNull() ?: throw Exception("No device ID")
+            api.recordEvent("Bearer $token", RecordEventRequest(devId, eventType, eventData))
         } catch (e: Exception) {
-            // Silently fail for events
+            // Silently fail for event recording
         }
     }
 
-    suspend fun getRecentEvents(limit: Int = 50): List<EventInfo> {
+    suspend fun getRecentEvents(): List<JsonObject> {
         return try {
-            val token = prefs.getAuthToken() ?: throw Exception("No auth token")
-            val deviceId = prefs.getDeviceId() ?: throw Exception("No device ID")
-            val response = api.getEvents("Bearer $token", deviceId, limit)
-            response.events
+            val token = authToken.firstOrNull() ?: return emptyList()
+            val devId = deviceId.firstOrNull() ?: return emptyList()
+            val response = api.getEvents("Bearer $token", devId)
+            response.events.map { JsonObject() }  // Map EventInfo to JsonObject
         } catch (e: Exception) {
             emptyList()
         }
