@@ -5,16 +5,16 @@ plugins {
 
 android {
     namespace = "com.danbron.app"
-    compileSdk = 32
+    compileSdk = 33
 
     defaultConfig {
         applicationId = "com.danbron.app"
         minSdk = 26
-        targetSdk = 32
+        targetSdk = 33
         versionCode = 1
         versionName = "1.0.0"
         
-        buildConfigField("String", "BACKEND_URL", "\"https://ykafkyoajmqlapamdfsc.supabase.co/rest/v1/\"")
+        buildConfigField("String", "BACKEND_URL", "\"https://danbron-production.up.railway.app/api/\"")
         buildConfigField("String", "SUPABASE_KEY", "\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlrYWZreW9ham1xbGFwYW1kZnNjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MTI2OTEwODksImV4cCI6MjAyODI2NzA4OX0.8H-8_2Y_UrWxJ2Y0Z1Z1Z1Z1Z1Z1Z1Z1Z1Z1Z1Z1Z1Z\"")
     }
 
