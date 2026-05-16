@@ -5,18 +5,25 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "nodemon src/index.js"
+    "dev": "nodemon src/index.js",
+    "check": "node --check src/index.js && node --check src/routes/auth.js && node --check src/routes/devices.js && node --check src/routes/sync.js && node --check src/routes/ai.js && node --check src/routes/tools.js && node --check src/services/googleToolsService.js && node --check src/utils/validation.js",
+    "prod:check": "node scripts/production-check.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "express": "^4.18.2",
     "@supabase/supabase-js": "^2.38.4",
-    "jsonwebtoken": "^9.1.0",
-    "dotenv": "^16.3.1",
     "cors": "^2.8.5",
-    "uuid": "^9.0.1"
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "express-rate-limit": "^7.4.0",
+    "form-data": "^4.0.0",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^2.0.0",
+    "node-fetch": "^2.6.12",
+    "uuid": "^9.0.1",
+    "ws": "^8.20.1"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
