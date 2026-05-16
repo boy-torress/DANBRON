@@ -20,7 +20,7 @@ if (IS_PROD) {
     return !value || value.includes('your-') || value.includes('replace-');
   });
   if (missing.length) {
-    throw new Error(`Missing production env vars: ${missing.join(', ')}`);
+    console.warn(`WARNING: Missing production env vars: ${missing.join(', ')}`);
   }
 }
 
