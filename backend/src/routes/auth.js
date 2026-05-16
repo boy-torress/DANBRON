@@ -2,6 +2,7 @@ const express = require('express');
 const jwt = require('jsonwebtoken');
 const { supabase } = require('../db');
 const { v4: uuidv4 } = require('uuid');
+const { assertEmail, sanitizeName } = require('../utils/validation');
 
 const router = express.Router();
 
@@ -13,12 +14,14 @@ router.post('/auth', async (req, res) => {
     if (!email) {
       return res.status(400).json({ error: 'Email required' });
     }
+    const cleanEmail = assertEmail(email);
+    const cleanName = sanitizeName(name, cleanEmail.split('@')[0]);
 
     // Try to find user
     let { data: user, error } = await supabase
       .from('users')
       .select('*')
-      .eq('email', email)
+      .eq('email', cleanEmail)
       .single();
 
     // If user doesn't exist, create one
@@ -27,8 +30,8 @@ router.post('/auth', async (req, res) => {
         .from('users')
         .insert({
           id: uuidv4(),
-          email,
-          name: name || email.split('@')[0],
+          email: cleanEmail,
+          name: cleanName,
           created_at: new Date().toISOString()
         })
         .select()
@@ -44,7 +47,7 @@ router.post('/auth', async (req, res) => {
     const token = jwt.sign(
       { userId: user.id, email: user.email },
       process.env.JWT_SECRET,
-      { expiresIn: '30d' }
+      { expiresIn: process.env.JWT_EXPIRES_IN || '30d' }
     );
 
     res.json({
@@ -57,7 +60,7 @@ router.post('/auth', async (req, res) => {
     });
   } catch (error) {
     console.error('Auth error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(error.statusCode || 500).json({ error: error.statusCode ? error.message : 'Authentication failed' });
   }
 });
 
