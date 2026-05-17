@@ -118,6 +118,9 @@ railway up
 | `SUPABASE_JWT_SECRET` | Supabase → Settings → JWT | `super-secret-xxx` |
 | `JWT_SECRET` | Cualquier string aleatorio | `my-secret-key-123` |
 | `BACKEND_URL` | Tu URL de Railway/Render | `https://danbron-backend.railway.app/api` |
+| `AI_PROVIDER` | groq o anthropic | `groq` |
+| `GROQ_API_KEY` | Groq API key | `gsk_...` |
+| `ANTHROPIC_API_KEY` | Anthropic API key | `sk-ant-...` |
 
 ## Problemas Comunes
 

@@ -14,6 +14,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.danbron.app.data.models.BronMood
+import com.danbron.app.ui.components.BronMascot
 import com.danbron.app.ui.theme.*
 import kotlinx.coroutines.delay
 
@@ -51,6 +53,12 @@ fun SplashScreen(onFinished: () -> Unit) {
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            BronMascot(
+                mood = BronMood.HAPPY,
+                size = 178.dp,
+                animated = true
+            )
+            Spacer(Modifier.height(18.dp))
             Text(
                 "danbron",
                 style = DanbronType.displayLarge,

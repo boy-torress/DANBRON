@@ -2,9 +2,8 @@
  * Windows System Events Tracker
  * Monitors app usage, emails, and system activity
  * Uses Tauri to access Windows APIs and PowerShell commands
+ * Note: invokeTauri is defined globally in app.js — do NOT redeclare here
  */
-
-const { invoke } = window.__TAURI__.tauri;
 
 class WindowsSystemTracker {
   constructor(syncClient) {
@@ -12,6 +11,7 @@ class WindowsSystemTracker {
     this.trackedApps = new Set();
     this.eventCheckInterval = 60000; // Check every minute
     this.isMonitoring = false;
+    this.currentContext = null;
   }
 
   /**
@@ -46,6 +46,7 @@ class WindowsSystemTracker {
     // Initial checks
     await this.checkOpenApplications();
     await this.checkBatteryStatus();
+    await this.getFullContext();
   }
 
   /**
@@ -93,6 +94,92 @@ class WindowsSystemTracker {
     } catch (error) {
       console.error('Failed to check open applications:', error);
     }
+  }
+
+  async getActiveWindows() {
+    const psCommand = `
+      $ErrorActionPreference = 'SilentlyContinue'
+      [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+      Get-Process |
+        Where-Object { $_.MainWindowTitle -and $_.MainWindowTitle.Trim().Length -gt 0 } |
+        Select-Object -First 40 -Property ProcessName, MainWindowTitle |
+        ConvertTo-Json -Depth 3 -Compress
+    `;
+
+    const windows = await this.executePowerShell(psCommand);
+    const list = Array.isArray(windows) ? windows : (windows ? [windows] : []);
+    return list.map(w => ({
+      processName: String(w.ProcessName || '').trim(),
+      windowTitle: String(w.MainWindowTitle || '').trim().substring(0, 160)
+    })).filter(w => w.processName && w.windowTitle);
+  }
+
+  async getInstalledApps() {
+    const psCommand = `
+      $paths = @(
+        'HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*',
+        'HKLM:\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*',
+        'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*'
+      )
+      Get-ItemProperty $paths -ErrorAction SilentlyContinue |
+        Where-Object { $_.DisplayName } |
+        Sort-Object DisplayName -Unique |
+        Select-Object -First 120 @{Name='Name';Expression={$_.DisplayName}}, DisplayVersion, Publisher |
+        ConvertTo-Json -Depth 3
+    `;
+
+    const apps = await this.executePowerShell(psCommand);
+    const list = Array.isArray(apps) ? apps : (apps ? [apps] : []);
+    return list.map(app => ({
+      name: String(app.Name || '').trim(),
+      version: String(app.DisplayVersion || '').trim(),
+      publisher: String(app.Publisher || '').trim()
+    })).filter(app => app.name);
+  }
+
+  async getCommunicationSignals(activeWindows = []) {
+    const known = [
+      ['whatsapp', 'WhatsApp'],
+      ['gmail', 'Gmail'],
+      ['outlook', 'Outlook'],
+      ['mail', 'Correo'],
+      ['telegram', 'Telegram'],
+      ['discord', 'Discord'],
+      ['teams', 'Teams'],
+      ['slack', 'Slack']
+    ];
+
+    return activeWindows
+      .map(w => {
+        const haystack = `${w.processName} ${w.windowTitle}`.toLowerCase();
+        const match = known.find(([needle]) => haystack.includes(needle));
+        return match ? { source: match[1], title: w.windowTitle, processName: w.processName } : null;
+      })
+      .filter(Boolean);
+  }
+
+  async getGamesAndLaunchers(activeWindows = [], installedApps = []) {
+    const gameNeedles = [
+      'steam', 'epic games', 'xbox', 'riot', 'valorant', 'league of legends',
+      'minecraft', 'roblox', 'battle.net', 'ea app', 'ubisoft', 'rockstar',
+      'fortnite', 'counter-strike', 'cs2', 'gta', 'call of duty', 'youtube'
+    ];
+
+    const running = activeWindows
+      .filter(w => gameNeedles.some(n => `${w.processName} ${w.windowTitle}`.toLowerCase().includes(n)))
+      .map(w => ({ name: w.windowTitle || w.processName, running: true }));
+
+    const installed = installedApps
+      .filter(app => gameNeedles.some(n => app.name.toLowerCase().includes(n)))
+      .map(app => ({ name: app.name, running: false }));
+
+    const byName = new Map();
+    [...running, ...installed].forEach(item => {
+      const key = item.name.toLowerCase();
+      if (!byName.has(key) || item.running) byName.set(key, item);
+    });
+
+    return Array.from(byName.values()).slice(0, 30);
   }
 
   /**
@@ -159,8 +246,10 @@ class WindowsSystemTracker {
         status: batteryInfo.status,
         timestamp: new Date().toISOString()
       });
+      return batteryInfo;
     } catch (error) {
       console.error('Failed to check battery status:', error);
+      return null;
     }
   }
 
@@ -232,11 +321,12 @@ class WindowsSystemTracker {
       // This requires Tauri shell plugin to be configured in tauri.conf.json
       // See: https://tauri.app/docs/features/shell/
 
-      const result = await invoke('run_shell_command', {
-        cmd: 'powershell',
-        args: ['-Command', command]
+      const result = await invokeTauri('run_shell_command', {
+        cmd: 'powershell.exe',
+        args: ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', command]
       });
 
+      if (!result || !String(result).trim()) return null;
       return JSON.parse(result);
     } catch (error) {
       console.error('PowerShell execution error:', error);
@@ -279,6 +369,33 @@ class WindowsSystemTracker {
       systemInfo,
       timestamp: new Date().toISOString()
     };
+  }
+
+  async getFullContext() {
+    const [activeWindows, installedApps, battery, systemInfo] = await Promise.all([
+      this.getActiveWindows(),
+      this.getInstalledApps(),
+      this.checkBatteryStatus(),
+      this.getSystemInfo()
+    ]);
+
+    const comms = await this.getCommunicationSignals(activeWindows);
+    const games = await this.getGamesAndLaunchers(activeWindows, installedApps);
+
+    activeWindows.forEach(w => this.trackedApps.add(`${w.processName}:${w.windowTitle}`));
+
+    this.currentContext = {
+      activeWindows,
+      installedApps,
+      comms,
+      games,
+      battery,
+      systemInfo,
+      permissionNote: 'Contexto local visible y autorizado por el usuario.',
+      lastUpdated: new Date().toISOString()
+    };
+
+    return this.currentContext;
   }
 }
 

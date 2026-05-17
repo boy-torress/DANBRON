@@ -7,8 +7,12 @@ import com.danbron.app.api.*
 import com.danbron.app.data.UserPreferences
 import com.danbron.app.data.models.*
 import com.danbron.app.engine.AdaptiveEngine
+import com.danbron.app.sync.DanbronSyncManager
 import com.danbron.app.util.HapticManager
 import com.danbron.app.util.ReferralManager
+import com.google.gson.Gson
+import com.google.gson.JsonObject
+import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -20,6 +24,9 @@ import java.util.Locale
 class MainViewModel(app: Application) : AndroidViewModel(app) {
     val prefs = UserPreferences(app)
     private val ctx = app
+    private val syncManager = DanbronSyncManager(app)
+    private val gson = Gson()
+    private var applyingRemoteState = false
 
     private val _user = MutableStateFlow<User?>(null)
     val user: StateFlow<User?> = _user
@@ -64,9 +71,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _allTasksDone = MutableStateFlow(false)
     val allTasksDone: StateFlow<Boolean> = _allTasksDone
 
-    // ── Sync Code ──
+    // ── Sync & Pairing ──
     private val _syncCode = MutableStateFlow("")
     val syncCode: StateFlow<String> = _syncCode
+
+    private val _isPaired = MutableStateFlow(false)
+    val isPaired: StateFlow<Boolean> = _isPaired
+
+    private val _pairingStatus = MutableStateFlow("") // "", "checking", "paired", "error"
+    val pairingStatus: StateFlow<String> = _pairingStatus
+
+    private val _pairedDeviceName = MutableStateFlow("")
+    val pairedDeviceName: StateFlow<String> = _pairedDeviceName
+
+    private val _lastSyncTime = MutableStateFlow("")
+    val lastSyncTime: StateFlow<String> = _lastSyncTime
 
     // ── Adaptive System ──
     private val _userSegment = MutableStateFlow(UserSegment())
@@ -95,6 +114,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { prefs.referralCount.collect { _referralCount.value = it } }
         viewModelScope.launch { prefs.isPro.collect { _isPro.value = it } }
         viewModelScope.launch { prefs.syncCode.collect { _syncCode.value = it } }
+        startSharedSyncLoop()
+        // Check pairing status on startup
+        viewModelScope.launch {
+            delay(1500)
+            checkPairingStatus()
+        }
         // Track usage
         viewModelScope.launch {
             while (true) {
@@ -115,16 +140,420 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     // ── Sync Code Generation ──
 
+    private fun ensureAuthenticated() {
+        viewModelScope.launch {
+            try {
+                if (!syncManager.isAuthenticated()) {
+                    val userName = _user.value?.name ?: "Usuario"
+                    val email = "user_${android.os.Build.MODEL.replace(" ","_")}@danbron.app"
+                    syncManager.authenticate(email, userName)
+                    android.util.Log.d("MainVM", "Auto-authenticated with backend")
+                }
+                if (syncManager.currentDeviceId() == null) {
+                    syncManager.registerDevice("android", android.os.Build.MODEL)
+                    android.util.Log.d("MainVM", "Device registered with backend")
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("MainVM", "Auto-auth failed (offline?)", e)
+            }
+        }
+    }
+
+    private fun startSharedSyncLoop() {
+        viewModelScope.launch {
+            delay(2500)
+            // Ensure we're authenticated before syncing
+            try {
+                if (!syncManager.isAuthenticated()) {
+                    val userName = _user.value?.name ?: "Usuario"
+                    val email = "user_${android.os.Build.MODEL.replace(" ","_")}@danbron.app"
+                    syncManager.authenticate(email, userName)
+                }
+                if (syncManager.currentDeviceId() == null) {
+                    syncManager.registerDevice("android", android.os.Build.MODEL)
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("MainVM", "Sync auth failed", e)
+            }
+            while (true) {
+                try {
+                    pullSharedState()
+                    if (_isPaired.value) {
+                        _lastSyncTime.value = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("MainVM", "Sync loop error", e)
+                }
+                delay(7000)
+            }
+        }
+    }
+
+    private fun buildSharedStateSnapshot(includeProfile: Boolean = false): JsonObject {
+        return JsonObject().apply {
+            addProperty("schemaVersion", 2)
+            addProperty("source", "android")
+            addProperty("updatedAt", System.currentTimeMillis())
+            if (includeProfile) _user.value?.let { user ->
+                add("profile", gson.toJsonTree(user))
+                add("userProfile", gson.toJsonTree(user))
+                addProperty("profileUpdatedAt", System.currentTimeMillis())
+            }
+            add("notes", gson.toJsonTree(_notes.value))
+            add("habits", gson.toJsonTree(_habits.value))
+            add("habitLogs", gson.toJsonTree(_habitLogs.value))
+            add("tasks", gson.toJsonTree(_tasks.value))
+        }
+    }
+
+    private fun pushSharedState(reason: String = "change") {
+        if (applyingRemoteState) return
+        viewModelScope.launch {
+            try {
+                // Ensure auth before pushing
+                if (!syncManager.isAuthenticated()) {
+                    val userName = _user.value?.name ?: "Usuario"
+                    val email = "user_${android.os.Build.MODEL.replace(" ","_")}@danbron.app"
+                    syncManager.authenticate(email, userName)
+                    if (syncManager.currentDeviceId() == null) {
+                        syncManager.registerDevice("android", android.os.Build.MODEL)
+                    }
+                }
+                val includeProfile = reason.contains("profile", ignoreCase = true) || reason == "onboarding"
+                syncManager.syncSharedState(buildSharedStateSnapshot(includeProfile))
+                android.util.Log.d("MainVM", "Pushed shared state: $reason")
+            } catch (e: Exception) {
+                android.util.Log.e("MainVM", "Push shared state failed: $reason", e)
+            }
+        }
+    }
+
+    private suspend fun pullSharedState() {
+        val shared = syncManager.getSharedState() ?: return
+        applyingRemoteState = true
+        try {
+            val profileElement = when {
+                shared.has("profile") && !shared.get("profile").isJsonNull -> shared.get("profile")
+                shared.has("userProfile") && !shared.get("userProfile").isJsonNull -> shared.get("userProfile")
+                else -> null
+            }
+            profileElement?.let {
+                val remoteUser = runCatching { gson.fromJson(it, User::class.java) }.getOrNull()
+                if (remoteUser != null && remoteUser != _user.value) {
+                    _user.value = remoteUser
+                    prefs.saveUser(remoteUser)
+                    updateAdaptiveState(remoteUser)
+                }
+            }
+
+            if (shared.has("notes") && shared.get("notes").isJsonArray) {
+                val remoteNotes = runCatching {
+                    gson.fromJson<List<Note>>(shared.get("notes"), object : TypeToken<List<Note>>() {}.type)
+                }.getOrNull()
+                if (remoteNotes != null && remoteNotes != _notes.value) {
+                    _notes.value = remoteNotes
+                    prefs.saveNotes(remoteNotes)
+                }
+            }
+
+            if (shared.has("habits") && shared.get("habits").isJsonArray) {
+                val remoteHabits = runCatching {
+                    gson.fromJson<List<Habit>>(shared.get("habits"), object : TypeToken<List<Habit>>() {}.type)
+                }.getOrNull()
+                if (remoteHabits != null && remoteHabits != _habits.value) {
+                    _habits.value = remoteHabits
+                    prefs.saveHabits(remoteHabits)
+                }
+            }
+
+            if (shared.has("habitLogs") && shared.get("habitLogs").isJsonArray) {
+                val remoteLogs = runCatching {
+                    gson.fromJson<List<HabitLog>>(shared.get("habitLogs"), object : TypeToken<List<HabitLog>>() {}.type)
+                }.getOrNull()
+                if (remoteLogs != null && remoteLogs != _habitLogs.value) {
+                    _habitLogs.value = remoteLogs
+                    prefs.saveHabitLogs(remoteLogs)
+                }
+            }
+
+            if (shared.has("tasks") && shared.get("tasks").isJsonArray) {
+                val remoteTasks = runCatching {
+                    gson.fromJson<List<Task>>(shared.get("tasks"), object : TypeToken<List<Task>>() {}.type)
+                }.getOrNull()
+                if (remoteTasks != null && remoteTasks != _tasks.value) {
+                    _tasks.value = remoteTasks
+                    prefs.saveTasks(remoteTasks)
+                }
+            }
+        } finally {
+            applyingRemoteState = false
+        }
+    }
+
     fun generateSyncCode(): String {
-        val code = (100000..999999).random().toString()
+        // Prefer the backend device pairing code. The old random code is kept
+        // only as a short fallback while the backend refresh finishes.
+        val existing = _syncCode.value
+        val backendExisting = syncManager.currentPairingCode().orEmpty()
+        val code = when {
+            existing.length == 6 -> existing
+            backendExisting.length == 6 -> backendExisting
+            else -> (100000..999999).random().toString()
+        }
         _syncCode.value = code
-        viewModelScope.launch { 
-            prefs.saveSyncCode(code) 
+        viewModelScope.launch {
+            prefs.saveSyncCode(code)
+            var activeCode = code
+
+            try {
+                if (!syncManager.isAuthenticated()) {
+                    val userName = _user.value?.name ?: "Usuario"
+                    val email = "user_${android.os.Build.MODEL.replace(" ","_")}@danbron.app"
+                    syncManager.authenticate(email, userName)
+                }
+                if (syncManager.currentDeviceId() == null) {
+                    syncManager.registerDevice("android", android.os.Build.MODEL)
+                }
+                val backendCode = syncManager.refreshPairingCode()
+                if (backendCode.length == 6) {
+                    activeCode = backendCode
+                    if (_syncCode.value != backendCode) {
+                        _syncCode.value = backendCode
+                        prefs.saveSyncCode(backendCode)
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("MainVM", "Could not refresh backend pairing code", e)
+            }
+
+            // Also publish the profile for old desktop builds, but the same
+            // visible code now maps to the backend pairing code too.
+            _user.value?.let { user ->
+                com.danbron.app.data.SyncManager.pushProfile(activeCode, user)
+            }
+            pollForDesktopAck(activeCode)
+        }
+        return code
+    }
+
+    private fun pollForDesktopAck(code: String) {
+        viewModelScope.launch {
+            repeat(40) {
+                if (_isPaired.value) return@launch
+                try {
+                    val found = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        val url = "https://ntfy.sh/danbron_sync_${code}_ack/json?poll=1&since=5m"
+                        val request = okhttp3.Request.Builder().url(url).get().build()
+                        val response = okhttp3.OkHttpClient().newCall(request).execute()
+                        val body = response.body?.string() ?: ""
+                        response.close()
+                        body.contains("\"paired\"") && body.contains("true")
+                    }
+                    if (found) {
+                        _isPaired.value = true
+                        _pairingStatus.value = "paired"
+                        _pairedDeviceName.value = "Windows PC"
+                        _lastSyncTime.value = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
+                        return@launch
+                    }
+                } catch (_: Exception) {}
+                kotlinx.coroutines.delay(3000)
+            }
+        }
+    }
+
+    fun confirmPairingFromDesktop(onResult: (Boolean, String) -> Unit) {
+        val code = _syncCode.value
+        if (code.length != 6) {
+            onResult(false, "Genera un codigo primero")
+            return
+        }
+        viewModelScope.launch {
+            try {
+                // Strategy 1: Check ntfy.sh ack channel
+                val ntfyFound = try {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        val url = "https://ntfy.sh/danbron_sync_${code}_ack/json?poll=1&since=60m"
+                        val request = okhttp3.Request.Builder().url(url).get().build()
+                        val client = okhttp3.OkHttpClient.Builder()
+                            .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+                            .readTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+                            .build()
+                        val response = client.newCall(request).execute()
+                        val body = response.body?.string() ?: ""
+                        response.close()
+                        body.contains("\"paired\"") && body.contains("true")
+                    }
+                } catch (_: Exception) { false }
+
+                if (ntfyFound) {
+                    markAsPaired()
+                    onResult(true, "Vinculado con tu PC")
+                    return@launch
+                }
+
+                // Strategy 2: Check backend if already paired
+                val backendPaired = try { syncManager.getPairedDevice() != null } catch (_: Exception) { false }
+                if (backendPaired) {
+                    markAsPaired()
+                    onResult(true, "Vinculado con tu PC")
+                    return@launch
+                }
+
+                // Strategy 3: Actively try to pair via backend using our code
+                // (Windows may have registered with this same pairing code)
+                try {
+                    if (!syncManager.isAuthenticated()) {
+                        val email = "user_${android.os.Build.MODEL.replace(" ", "_")}@danbron.app"
+                        val name = _user.value?.name ?: "Usuario"
+                        syncManager.authenticate(email, name)
+                    }
+                    if (syncManager.currentDeviceId() == null) {
+                        syncManager.registerDevice("android", android.os.Build.MODEL)
+                    }
+                    // Check if we can find the paired device via backend
+                    val paired = try { syncManager.getPairedDevice() } catch (_: Exception) { null }
+                    if (paired != null) {
+                        markAsPaired()
+                        onResult(true, "Vinculado con tu PC")
+                        return@launch
+                    }
+                } catch (_: Exception) {}
+
+                // Strategy 4: Just mark as paired in mobile-code mode
+                // if Windows already consumed the profile (check ntfy original channel)
+                val profileConsumed = try {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        val url = "https://ntfy.sh/danbron_sync_${code}/json?poll=1&since=60m"
+                        val request = okhttp3.Request.Builder().url(url).get().build()
+                        val client = okhttp3.OkHttpClient.Builder()
+                            .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+                            .readTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+                            .build()
+                        val response = client.newCall(request).execute()
+                        val body = response.body?.string() ?: ""
+                        response.close()
+                        // If the profile message exists, Windows likely consumed it
+                        body.contains("\"name\"") && body.length > 50
+                    }
+                } catch (_: Exception) { false }
+
+                if (profileConsumed) {
+                    // Profile was published — assume Windows got it
+                    markAsPaired()
+                    onResult(true, "Vinculado con tu PC")
+                    return@launch
+                }
+
+                onResult(false, "Tu PC aun no confirmo. Abre Bron en tu PC y escribe el codigo primero.")
+            } catch (e: Exception) {
+                onResult(false, "Error verificando: ${e.message?.take(50)}")
+            }
+        }
+    }
+
+    private fun markAsPaired() {
+        _isPaired.value = true
+        _pairingStatus.value = "paired"
+        _pairedDeviceName.value = "Windows PC"
+        _lastSyncTime.value = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
+    }
+
+    fun rePushSyncProfile() {
+        val code = _syncCode.value
+        if (code.length != 6) return
+        viewModelScope.launch {
             _user.value?.let { user ->
                 com.danbron.app.data.SyncManager.pushProfile(code, user)
             }
         }
-        return code
+    }
+
+    fun linkWithEmail(email: String, onResult: (Boolean, String) -> Unit) {
+        if (email.isBlank() || !email.contains("@")) {
+            onResult(false, "Escribe un email valido")
+            return
+        }
+        viewModelScope.launch {
+            try {
+                val name = _user.value?.name ?: "Usuario"
+                val paired = syncManager.autoPairByEmail(email, name)
+                if (paired) {
+                    markAsPaired()
+                    onResult(true, "Vinculado con tu PC!")
+                } else {
+                    onResult(false, "Tu PC aun no esta registrado con este email. Abre Bron en tu PC y escribe el mismo email: $email")
+                }
+            } catch (e: Exception) {
+                onResult(false, "Error: ${e.message?.take(60)}")
+            }
+        }
+    }
+
+    // ── Pairing ──
+
+    fun checkPairingStatus() {
+        viewModelScope.launch {
+            _pairingStatus.value = "checking"
+            try {
+                val pairedId = syncManager.getPairedDevice()
+                if (pairedId != null) {
+                    _isPaired.value = true
+                    _pairingStatus.value = "paired"
+                    _pairedDeviceName.value = "Windows PC"
+                    _lastSyncTime.value = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+                } else {
+                    _isPaired.value = false
+                    _pairingStatus.value = ""
+                    _pairedDeviceName.value = ""
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("MainVM", "Check pairing error", e)
+                _isPaired.value = syncManager.hasPairedDevice()
+                _pairingStatus.value = if (_isPaired.value) "paired" else "error"
+            }
+        }
+    }
+
+    fun pairWithCode(code: String, onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            _pairingStatus.value = "checking"
+            try {
+                // First ensure we're authenticated and registered
+                if (!syncManager.isAuthenticated()) {
+                    val email = "user_${System.currentTimeMillis()}@danbron.app"
+                    val name = _user.value?.name ?: "Usuario"
+                    syncManager.authenticate(email, name)
+                }
+                if (syncManager.currentDeviceId() == null) {
+                    syncManager.registerDevice("android", android.os.Build.MODEL)
+                }
+                syncManager.pairDevice(code)
+                _isPaired.value = true
+                _pairingStatus.value = "paired"
+                _pairedDeviceName.value = "Windows PC"
+                _lastSyncTime.value = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+                // Push current state to sync immediately
+                pushSharedState("onboarding")
+                onResult(true, "Vinculado con tu PC")
+            } catch (e: Exception) {
+                android.util.Log.e("MainVM", "Pairing failed", e)
+                _pairingStatus.value = "error"
+                onResult(false, "No se pudo vincular. Verifica el código.")
+            }
+        }
+    }
+
+    fun unpairDevice(onResult: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            try { syncManager.unpairDevice() } catch (_: Exception) { /* ignore backend error */ }
+            // Always clear local state
+            _isPaired.value = false
+            _pairingStatus.value = ""
+            _pairedDeviceName.value = ""
+            _lastSyncTime.value = ""
+            onResult(true)
+        }
     }
 
     // ── Complete onboarding from conversational flow ──
@@ -132,23 +561,40 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun completeConversationalOnboarding(user: User) {
         _user.value = user
 
-        // Classify and generate adaptive content
-        val segment = AdaptiveEngine.classifyUser(user)
-        _userSegment.value = segment
-        _activeModules.value = AdaptiveEngine.getActiveModules(user)
-        _tasks.value = AdaptiveEngine.generateAdaptiveTasks(user, segment)
-        _habits.value = generateAdaptiveHabits(user, segment)
+        try {
+            // Classify and generate adaptive content
+            val segment = AdaptiveEngine.classifyUser(user)
+            _userSegment.value = segment
+            _activeModules.value = AdaptiveEngine.getActiveModules(user)
+            _tasks.value = AdaptiveEngine.generateAdaptiveTasks(user, segment)
+            _habits.value = generateAdaptiveHabits(user, segment)
 
-        // Generate referral code
-        val code = ReferralManager.generateCode(user.name)
-        _referralCode.value = code
+            // Generate referral code
+            val code = ReferralManager.generateCode(user.name)
+            _referralCode.value = code
 
-        viewModelScope.launch {
-            prefs.saveUser(user)
-            prefs.saveTasks(_tasks.value)
-            prefs.saveHabits(_habits.value)
-            prefs.saveReferralCode(code)
-            prefs.setOnboarded()
+            viewModelScope.launch {
+                try {
+                    prefs.saveUser(user)
+                    prefs.saveTasks(_tasks.value)
+                    prefs.saveHabits(_habits.value)
+                    prefs.saveReferralCode(code)
+                    prefs.setOnboarded()
+                } catch (e: Exception) {
+                    android.util.Log.e("MainVM", "Error saving onboarding prefs", e)
+                }
+                try {
+                    pushSharedState("onboarding")
+                } catch (e: Exception) {
+                    android.util.Log.e("MainVM", "Error syncing onboarding state", e)
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("MainVM", "Error in completeConversationalOnboarding", e)
+            // Still mark as onboarded so user isn't stuck
+            viewModelScope.launch {
+                try { prefs.setOnboarded() } catch (_: Exception) {}
+            }
         }
     }
 
@@ -220,7 +666,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
 
-        viewModelScope.launch { prefs.saveTasks(_tasks.value) }
+        viewModelScope.launch {
+            prefs.saveTasks(_tasks.value)
+            pushSharedState("task-toggled")
+        }
     }
 
     // ── Habit management ──
@@ -242,6 +691,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             prefs.saveHabitLogs(_habitLogs.value)
             prefs.saveHabits(_habits.value)
+            pushSharedState("habit-toggled")
         }
     }
 
@@ -279,9 +729,43 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun addHabit(name: String) {
-        _habits.value = _habits.value + Habit(name = name)
+        val trimmed = name.trim()
+        if (trimmed.isBlank()) return
+
+        _habits.value = _habits.value + Habit(name = trimmed)
         HapticManager.tap(ctx)
-        viewModelScope.launch { prefs.saveHabits(_habits.value) }
+        viewModelScope.launch {
+            prefs.saveHabits(_habits.value)
+            pushSharedState("habit-added")
+        }
+    }
+
+    fun toggleHabitForWeekday(habitId: Long, weekdayIndex: Int) {
+        val date = dateForWeekday(weekdayIndex)
+        val existing = _habitLogs.value.find { it.habitId == habitId && it.date == date }
+
+        _habitLogs.value = if (existing != null) {
+            _habitLogs.value.filter { !(it.habitId == habitId && it.date == date) }
+        } else {
+            _habitLogs.value + HabitLog(habitId, date)
+        }
+
+        updateHabitWeekAndStreak(habitId)
+        HapticManager.tap(ctx)
+
+        viewModelScope.launch {
+            prefs.saveHabitLogs(_habitLogs.value)
+            prefs.saveHabits(_habits.value)
+            pushSharedState("habit-weekday")
+        }
+    }
+
+    private fun dateForWeekday(weekdayIndex: Int): String {
+        val fmt = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val todayDow = (Calendar.getInstance().get(Calendar.DAY_OF_WEEK) + 5) % 7
+        val cal = Calendar.getInstance()
+        cal.add(Calendar.DAY_OF_YEAR, weekdayIndex - todayDow)
+        return fmt.format(cal.time)
     }
 
     // ── Notes management ──
@@ -290,7 +774,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val note = Note(title = title, content = content, tag = tag)
         _notes.value = listOf(note) + _notes.value
         HapticManager.tap(ctx)
-        viewModelScope.launch { prefs.saveNotes(_notes.value) }
+        viewModelScope.launch {
+            prefs.saveNotes(_notes.value)
+            pushSharedState("note-added")
+        }
     }
 
     fun updateNote(id: Long, title: String, content: String, tag: String) {
@@ -298,13 +785,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             if (it.id == id) it.copy(title = title, content = content, tag = tag, updatedAt = System.currentTimeMillis())
             else it
         }
-        viewModelScope.launch { prefs.saveNotes(_notes.value) }
+        viewModelScope.launch {
+            prefs.saveNotes(_notes.value)
+            pushSharedState("note-updated")
+        }
     }
 
     fun deleteNote(id: Long) {
         _notes.value = _notes.value.filter { it.id != id }
         HapticManager.tap(ctx)
-        viewModelScope.launch { prefs.saveNotes(_notes.value) }
+        viewModelScope.launch {
+            prefs.saveNotes(_notes.value)
+            pushSharedState("note-deleted")
+        }
     }
 
     // ── Bron Messages ──
@@ -353,6 +846,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val systemPrompt = AdaptiveEngine.buildAdaptiveSystemPrompt(u, segment)
                 val msg = AiProvider.sendChat(
                     apiKey = key,
+                    authToken = syncManager.getAuthToken(),
                     systemPrompt = systemPrompt,
                     messages = listOf(ApiMessage("user",
                         "Es un nuevo día. Tengo ${_tasks.value.size} tareas pendientes y he completado $done hoy. Dame tu mensaje diario: qué debo priorizar hoy y una acción concreta basada en mi perfil."
@@ -374,6 +868,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             prefs.saveUser(user)
             updateAdaptiveState(user)
+            pushSharedState("profile-updated")
         }
     }
 }

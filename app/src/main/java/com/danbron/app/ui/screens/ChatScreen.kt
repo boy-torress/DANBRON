@@ -2,7 +2,6 @@ package com.danbron.app.ui.screens
 
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -15,15 +14,17 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.danbron.app.data.models.BronMood
+import com.danbron.app.ui.components.BronMascot
 import com.danbron.app.ui.theme.*
 import com.danbron.app.viewmodel.ChatViewModel
-import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -32,10 +33,10 @@ fun ChatScreen(chatVm: ChatViewModel) {
     val messages by chatVm.messages.collectAsState()
     val isTyping by chatVm.isTyping.collectAsState()
     val isRecording by chatVm.isRecording.collectAsState()
+    val partialSpeech by chatVm.speechRecognizer.partialResult.collectAsState()
     var inputText by remember { mutableStateOf("") }
     var voiceEnabled by remember { mutableStateOf(chatVm.voiceManager.isEnabled) }
     val listState = rememberLazyListState()
-    val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) { chatVm.initWelcome() }
     LaunchedEffect(messages.size) {
@@ -43,41 +44,53 @@ fun ChatScreen(chatVm: ChatViewModel) {
     }
 
     Column(Modifier.fillMaxSize().background(BgPrimary)) {
-        // Header
-        Row(
-            Modifier.fillMaxWidth().background(BgPrimary)
-                .padding(start = 20.dp, end = 20.dp, top = 52.dp, bottom = 16.dp)
-                .border(width = 0.dp, color = Color.Transparent),
-            verticalAlignment = Alignment.CenterVertically
+        // ── Premium Header ──
+        Box(
+            Modifier.fillMaxWidth()
+                .background(Brush.verticalGradient(listOf(BgSecondary, BgPrimary)))
+                .padding(start = 20.dp, end = 20.dp, top = 52.dp, bottom = 14.dp)
         ) {
-            Box(Modifier.size(38.dp).clip(CircleShape).background(Brush.linearGradient(listOf(Gold, Color(0xFFC97B2E)))),
-                contentAlignment = Alignment.Center) {
-                Text("B", style = DanbronType.titleSmall.copy(fontSize = 14.sp), color = Color(0xFF0A0A0F))
-            }
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text("Bron", style = DanbronType.titleSmall, color = TextPrimary)
-                Text("● En línea", style = DanbronType.labelSmall.copy(letterSpacing = 0.sp), color = Green)
-            }
-            Box(
-                Modifier.size(36.dp).clip(CircleShape).background(BgSecondary)
-                    .clickable { 
-                        voiceEnabled = !voiceEnabled
-                        chatVm.toggleVoice(voiceEnabled)
-                    },
-                contentAlignment = Alignment.Center
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(if (voiceEnabled) "🔊" else "🔇", fontSize = 16.sp)
+                BronMascot(mood = BronMood.HAPPY, size = 46.dp, animated = true)
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Bron", style = DanbronType.titleMedium, color = Gold)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            Modifier.size(7.dp).clip(CircleShape)
+                                .background(Green)
+                        )
+                        Spacer(Modifier.width(5.dp))
+                        Text("Siempre contigo", style = DanbronType.caption, color = TextTertiary)
+                    }
+                }
+                Box(
+                    Modifier.size(40.dp).clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.04f))
+                        .border(1.dp, Border, CircleShape)
+                        .clickable {
+                            voiceEnabled = !voiceEnabled
+                            chatVm.toggleVoice(voiceEnabled)
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(if (voiceEnabled) "🔊" else "🔇", fontSize = 16.sp)
+                }
             }
         }
-        Box(Modifier.fillMaxWidth().height(1.dp).background(Border))
+        Box(Modifier.fillMaxWidth().height(0.5.dp).background(
+            Brush.horizontalGradient(listOf(Color.Transparent, Gold.copy(alpha = 0.15f), Color.Transparent))
+        ))
 
-        // Messages
+        // ── Messages ──
         LazyColumn(
             state = listState,
             modifier = Modifier.weight(1f).padding(horizontal = 16.dp),
-            contentPadding = PaddingValues(vertical = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+            contentPadding = PaddingValues(vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             items(messages) { msg ->
                 val isUser = msg.role == "user"
@@ -88,91 +101,145 @@ fun ChatScreen(chatVm: ChatViewModel) {
                 ) {
                     Box(
                         Modifier.widthIn(max = 300.dp)
-                            .clip(RoundedCornerShape(18.dp, 18.dp, if (isUser) 4.dp else 18.dp, if (isUser) 18.dp else 4.dp))
-                            .background(if (isUser) Gold else BgTertiary)
-                            .then(if (!isUser) Modifier.border(1.dp, Border, RoundedCornerShape(18.dp, 18.dp, 18.dp, 4.dp)) else Modifier)
-                            .padding(13.dp, 13.dp)
+                            .shadow(
+                                elevation = if (isUser) 6.dp else 2.dp,
+                                shape = RoundedCornerShape(20.dp, 20.dp, if (isUser) 6.dp else 20.dp, if (isUser) 20.dp else 6.dp),
+                                ambientColor = if (isUser) Gold.copy(alpha = 0.15f) else Color.Black.copy(alpha = 0.3f),
+                                spotColor = if (isUser) Gold.copy(alpha = 0.1f) else Color.Transparent
+                            )
+                            .clip(RoundedCornerShape(20.dp, 20.dp, if (isUser) 6.dp else 20.dp, if (isUser) 20.dp else 6.dp))
+                            .background(
+                                if (isUser) Brush.linearGradient(listOf(Gold, Color(0xFFD4A33E)))
+                                else Brush.linearGradient(listOf(Color(0xFF131320), Color(0xFF0E0E18)))
+                            )
+                            .then(
+                                if (!isUser) Modifier.border(
+                                    0.5.dp, Color.White.copy(alpha = 0.04f),
+                                    RoundedCornerShape(20.dp, 20.dp, 20.dp, 6.dp)
+                                ) else Modifier
+                            )
+                            .padding(14.dp, 12.dp)
                     ) {
-                        Text(msg.content,
-                            style = DanbronType.bodyMedium.copy(fontWeight = if (isUser) FontWeight.W500 else FontWeight.W400),
-                            color = if (isUser) Color(0xFF0A0A0F) else TextPrimary)
+                        Text(
+                            msg.content,
+                            style = DanbronType.bodyMedium.copy(
+                                fontWeight = if (isUser) FontWeight.W500 else FontWeight.W400,
+                                lineHeight = 22.sp
+                            ),
+                            color = if (isUser) Color(0xFF0A0A0F) else TextPrimary
+                        )
                     }
-                    Text(timeFmt, style = DanbronType.caption, color = TextTertiary,
-                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp))
+                    Text(
+                        timeFmt,
+                        style = DanbronType.caption.copy(letterSpacing = 0.sp),
+                        color = if (isUser) TextTertiary.copy(alpha = 0.6f) else TextTertiary,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                    )
                 }
             }
             if (isTyping) {
-                item {
-                    TypingIndicator()
-                }
+                item { TypingIndicator() }
             }
         }
 
-        // Suggestions
+        // ── Quick Suggestions ──
         if (messages.size <= 1) {
             LazyRow(
                 contentPadding = PaddingValues(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.padding(vertical = 8.dp)
+                modifier = Modifier.padding(vertical = 10.dp)
             ) {
-                val chips = listOf("¿Cómo salgo de mis deudas?", "Dame mi plan de hoy", "¿En qué puedo ahorrar?", "Ayúdame con un hábito")
-                items(chips, key = { it }) { chip ->
+                val chips = listOf(
+                    "💡" to "Agregame una nota rapida",
+                    "🚗" to "Cuanto gane hoy en Uber",
+                    "📱" to "Que hay en mi pantalla",
+                    "🎯" to "Crea un plan para hoy"
+                )
+                items(chips, key = { it.second }) { (emoji, chip) ->
                     Box(
-                        Modifier.clip(RoundedCornerShape(20.dp)).background(BgSecondary)
-                            .border(1.dp, Border, RoundedCornerShape(20.dp))
-                            .clickable { inputText = chip; chatVm.sendMessage(chip); inputText = "" }
-                            .padding(horizontal = 14.dp, vertical = 7.dp)
+                        Modifier.clip(RoundedCornerShape(24.dp))
+                            .background(Color.White.copy(alpha = 0.03f))
+                            .border(1.dp, Border, RoundedCornerShape(24.dp))
+                            .clickable { chatVm.sendMessage(chip) }
+                            .padding(horizontal = 16.dp, vertical = 9.dp)
                     ) {
-                        Text(chip, style = DanbronType.labelSmall.copy(letterSpacing = 0.sp, fontWeight = FontWeight.W500), color = TextSecondary)
+                        Text(
+                            "$emoji $chip",
+                            style = DanbronType.labelSmall.copy(letterSpacing = 0.sp, fontWeight = FontWeight.W500),
+                            color = TextSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
                 }
             }
         }
 
-        // Input
-        Box(Modifier.fillMaxWidth().background(BgPrimary.copy(alpha = 0.95f)).border(width = 1.dp, color = Border)) {
-            Row(Modifier.padding(12.dp, 12.dp), verticalAlignment = Alignment.Bottom) {
+        // ── Premium Input Bar ──
+        Column(
+            Modifier.fillMaxWidth()
+                .background(Brush.verticalGradient(listOf(BgPrimary, BgSecondary)))
+                .border(width = 0.5.dp, color = Border)
+                .padding(horizontal = 14.dp, vertical = 10.dp)
+        ) {
+            Row(verticalAlignment = Alignment.Bottom) {
                 OutlinedTextField(
                     value = inputText, onValueChange = { inputText = it },
-                    placeholder = { Text("Escríbele a Bron...", color = TextTertiary) },
+                    placeholder = { Text("Escríbele a Bron...", color = TextTertiary, fontSize = 14.sp) },
                     modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(22.dp),
+                    shape = RoundedCornerShape(24.dp),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Gold, unfocusedBorderColor = Border,
-                        cursorColor = Gold, focusedContainerColor = BgSecondary, unfocusedContainerColor = BgSecondary,
-                        focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary
+                        focusedBorderColor = Gold.copy(alpha = 0.4f),
+                        unfocusedBorderColor = Border,
+                        cursorColor = Gold,
+                        focusedContainerColor = Color.White.copy(alpha = 0.03f),
+                        unfocusedContainerColor = Color.White.copy(alpha = 0.02f),
+                        focusedTextColor = TextPrimary,
+                        unfocusedTextColor = TextPrimary
                     ),
-                    maxLines = 4
+                    maxLines = 4,
+                    textStyle = DanbronType.bodyMedium
                 )
                 Spacer(Modifier.width(10.dp))
                 if (inputText.isBlank()) {
-                    // Microphone button
-                    Box(
-                        Modifier.size(42.dp).clip(CircleShape).background(if (isRecording) Color.Red else Gold)
-                            .pointerInput(Unit) {
-                                detectTapGestures(
-                                    onPress = {
-                                        chatVm.startRecording()
-                                        tryAwaitRelease()
-                                        chatVm.stopRecordingAndSend()
-                                    }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        if (isRecording && partialSpeech.isNotBlank()) {
+                            Text(
+                                partialSpeech,
+                                style = DanbronType.caption,
+                                color = Gold.copy(alpha = 0.7f),
+                                maxLines = 1,
+                                modifier = Modifier.padding(bottom = 4.dp)
+                            )
+                        }
+                        Box(
+                            Modifier.size(50.dp).clip(CircleShape)
+                                .background(
+                                    if (isRecording) Brush.radialGradient(listOf(Color(0xFFFF4444), Color(0xFFCC0000)))
+                                    else Brush.linearGradient(listOf(Gold, Color(0xFFD4A33E)))
                                 )
-                            },
-                        contentAlignment = Alignment.Center
-                    ) { 
-                        Text("🎙️", fontSize = 18.sp) 
+                                .shadow(8.dp, CircleShape, ambientColor = if (isRecording) Red.copy(alpha = 0.3f) else Gold.copy(alpha = 0.2f))
+                                .clickable {
+                                    if (isRecording) chatVm.stopRecordingAndSend()
+                                    else chatVm.startRecording()
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(if (isRecording) "⏹" else "🎙", fontSize = 22.sp)
+                        }
                     }
                 } else {
-                    // Send button
                     Box(
-                        Modifier.size(42.dp).clip(CircleShape).background(Gold)
+                        Modifier.size(50.dp).clip(CircleShape)
+                            .background(Brush.linearGradient(listOf(Gold, Color(0xFFD4A33E))))
+                            .shadow(8.dp, CircleShape, ambientColor = Gold.copy(alpha = 0.2f))
                             .clickable {
                                 if (inputText.isNotBlank() && !isTyping) {
                                     chatVm.sendMessage(inputText); inputText = ""
                                 }
                             },
                         contentAlignment = Alignment.Center
-                    ) { Text("➤", color = Color(0xFF0A0A0F), fontSize = 18.sp) }
+                    ) { Text("➤", color = Color(0xFF0A0A0F), fontSize = 20.sp, fontWeight = FontWeight.W700) }
                 }
             }
         }
@@ -183,20 +250,24 @@ fun ChatScreen(chatVm: ChatViewModel) {
 private fun TypingIndicator() {
     val infiniteTransition = rememberInfiniteTransition(label = "typing")
     Row(
-        Modifier.clip(RoundedCornerShape(18.dp, 18.dp, 18.dp, 4.dp))
-            .background(BgTertiary).border(1.dp, Border, RoundedCornerShape(18.dp, 18.dp, 18.dp, 4.dp))
-            .padding(13.dp, 13.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp)
+        Modifier.clip(RoundedCornerShape(20.dp, 20.dp, 20.dp, 6.dp))
+            .background(Brush.linearGradient(listOf(Color(0xFF131320), Color(0xFF0E0E18))))
+            .border(0.5.dp, Color.White.copy(alpha = 0.04f), RoundedCornerShape(20.dp, 20.dp, 20.dp, 6.dp))
+            .padding(16.dp, 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(5.dp)
     ) {
         repeat(3) { i ->
             val offset by infiniteTransition.animateFloat(
-                initialValue = 0f, targetValue = -4f,
+                initialValue = 0f, targetValue = -5f,
                 animationSpec = infiniteRepeatable(
-                    animation = keyframes { durationMillis = 1200; -4f at 300 + i * 200 },
+                    animation = keyframes { durationMillis = 1200; -5f at 300 + i * 200 },
                     repeatMode = RepeatMode.Reverse
                 ), label = "dot$i"
             )
-            Box(Modifier.size(6.dp).offset(y = offset.dp).clip(CircleShape).background(TextTertiary))
+            Box(
+                Modifier.size(7.dp).offset(y = offset.dp).clip(CircleShape)
+                    .background(Gold.copy(alpha = 0.5f))
+            )
         }
     }
 }

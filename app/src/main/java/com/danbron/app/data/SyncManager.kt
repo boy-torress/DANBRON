@@ -20,7 +20,7 @@ object SyncManager {
                 val connection = url.openConnection() as HttpURLConnection
                 connection.requestMethod = "POST"
                 connection.doOutput = true
-                connection.setRequestProperty("Content-Type", "application/json")
+                connection.setRequestProperty("Content-Type", "text/plain; charset=utf-8")
                 
                 // Add a title to the ntfy message
                 connection.setRequestProperty("Title", "Danbron Sync Profile")

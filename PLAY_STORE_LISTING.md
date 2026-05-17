@@ -33,8 +33,8 @@ Bron es tu asistente de IA disponible 24/7. Habla contigo como un amigo que te d
 ✓ Quieres aumentar tus ingresos
 ✓ Buscas un plan diario personalizado
 
-🔐 PRIVACIDAD TOTAL
-• Tus datos NUNCA salen de tu dispositivo
+🔐 PRIVACIDAD
+• Tus datos se sincronizan solo si activas el emparejamiento
 • Sin anuncios, sin trackers, sin spam
 • Tú controlas todo
 

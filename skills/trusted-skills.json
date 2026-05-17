@@ -1,0 +1,37 @@
+{
+  "trustedMode": true,
+  "trustedSources": [
+    "https://clawhub.ai/jeffjhunter/ai-daily-briefing",
+    "https://clawhub.ai/byungkyu/gmail",
+    "https://clawhub.ai/steipete/gog",
+    "https://clawhub.ai/plugins/openclaw-soul-plugin",
+    "https://clawhub.ai/chunhualiao/openclaw-usecase-catalog",
+    "https://clawhub.ai/jason513597/clawpilot",
+    "https://clawhub.ai/byungkyu/api-gateway",
+    "https://clawhub.ai/ivangdavila/setup",
+    "https://clawhub.ai/matrixy/agent-browser-clawdbot"
+  ],
+  "externalRuntimes": {
+    "gog": {
+      "enabled": true,
+      "commands": ["gog"]
+    },
+    "maton": {
+      "enabled": true,
+      "commands": ["maton"]
+    },
+    "openclaw": {
+      "enabled": true,
+      "commands": ["openclaw"]
+    },
+    "agent-browser": {
+      "enabled": true,
+      "commands": ["agent-browser"]
+    }
+  },
+  "policy": {
+    "allowExternalSkillRuntime": true,
+    "allowTrustedWrites": true,
+    "fallbackToSafeUiWhenRuntimeMissing": true
+  }
+}

@@ -34,6 +34,14 @@
    NODE_ENV=production
    JWT_SECRET=danbron-super-secret-key-2026
    CORS_ORIGIN=*
+   AI_PROVIDER=groq
+   GROQ_API_KEY=TU_GROQ_API_KEY
+   ANTHROPIC_API_KEY=TU_ANTHROPIC_API_KEY
+   AI_MODEL_GROQ=llama-3.3-70b-versatile
+   AI_MODEL_ANTHROPIC=claude-sonnet-4-20250514
+   AI_TRANSCRIBE_MODEL=whisper-large-v3
+   AI_MAX_TOKENS=800
+   AI_TEMPERATURE=0.3
    ```
 
 ## PASO 5: Espera el Deploy

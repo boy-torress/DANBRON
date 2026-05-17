@@ -4,37 +4,35 @@
 
 ## 1. Información que recopilamos
 
-Danbron recopila la siguiente información que el usuario proporciona voluntariamente durante el registro:
+Danbron recopila la siguiente información para poder funcionar:
 
-- **Nombre**: Para personalizar la experiencia
-- **Datos financieros** (ingresos, gastos, deudas): Para generar recomendaciones personalizadas
-- **Estilo de trabajo**: Para adaptar el plan diario
+- **Datos de perfil**: nombre, objetivo, estilo de trabajo y preferencias.
+- **Datos financieros** (ingresos, gastos, deudas): para generar recomendaciones personalizadas.
+- **Eventos del sistema** (cuando el usuario lo autoriza): apps abiertas, titulos visibles de ventanas, bateria, y eventos de calendario/Outlook si estan disponibles.
+- **Datos de sincronizacion**: identificadores de dispositivo, emparejamiento y metadatos de sincronizacion.
 
 ## 2. Almacenamiento de datos
 
-- Todos los datos personales se almacenan **exclusivamente en tu dispositivo** usando almacenamiento local encriptado.
-- **NO** enviamos tus datos a nuestros servidores.
+- Los datos se almacenan **localmente** en tu dispositivo para una experiencia rapida.
+- Cuando el usuario activa sincronizacion, los datos se envian al **backend de Danbron** para emparejar dispositivos y mantener el historial.
 - **NO** vendemos ni compartimos tu información con terceros.
 
 ## 3. Uso de API externa
 
-- La app utiliza la API de Anthropic (Claude) para generar recomendaciones personalizadas.
-- Las consultas enviadas a la API contienen información contextual de tu perfil para generar respuestas relevantes.
-- Anthropic no retiene datos de conversaciones según su política de uso de API.
-- La API key de Anthropic es proporcionada y gestionada directamente por el usuario.
+- Danbron utiliza proveedores de IA (por ejemplo Groq o Anthropic) para generar recomendaciones.
+- Las consultas enviadas a estos proveedores contienen informacion contextual de tu perfil y del contexto permitido por ti.
+- La comunicacion se realiza desde el backend de Danbron usando HTTPS.
 
 ## 4. Datos que NO recopilamos
 
-- NO recopilamos ubicación
-- NO recopilamos contactos
-- NO recopilamos fotos ni archivos
-- NO utilizamos cookies de seguimiento
-- NO mostramos publicidad ni usamos trackers
+- NO recopilamos ubicacion.
+- NO recopilamos fotos ni archivos personales.
+- NO usamos publicidad ni trackers.
 
 ## 5. Seguridad
 
-- Los datos se almacenan localmente usando Android DataStore con encriptación del dispositivo.
-- Las comunicaciones con la API de Anthropic se realizan mediante HTTPS.
+- Los datos locales se almacenan usando Android DataStore con encriptación del dispositivo.
+- Las comunicaciones con el backend y proveedores de IA se realizan mediante HTTPS.
 
 ## 6. Derechos del usuario
 

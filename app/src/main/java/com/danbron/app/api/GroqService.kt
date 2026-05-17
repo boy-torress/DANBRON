@@ -11,7 +11,7 @@ import java.util.concurrent.TimeUnit
 
 // Groq uses OpenAI-compatible format
 data class GroqRequest(
-    val model: String = "llama-3.3-70b-versatile",
+    val model: String = GroqModels.DEFAULT_CHAT_MODEL,
     @SerializedName("max_tokens") val maxTokens: Int = 500,
     val messages: List<GroqMessage>,
     val temperature: Double = 0.7
@@ -40,6 +40,10 @@ interface GroqApi {
 }
 
 data class GroqTranscriptionResponse(val text: String)
+
+object GroqModels {
+    const val DEFAULT_CHAT_MODEL = "llama-3.3-70b-versatile"
+}
 
 object GroqService {
     private val client = OkHttpClient.Builder()

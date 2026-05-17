@@ -126,6 +126,37 @@ router.get('/devices/paired', authMiddleware, async (req, res) => {
   }
 });
 
+// Auto-pair: authenticate + register + pair with any other device under same account
+router.post('/devices/auto-pair', authMiddleware, async (req, res) => {
+  try {
+    const { deviceId } = req.body;
+    const userId = req.user.userId;
+
+    if (!deviceId) {
+      return res.status(400).json({ error: 'deviceId required' });
+    }
+    assertUuid(deviceId, 'deviceId');
+
+    const result = await deviceService.autoPairByUser(userId, deviceId);
+
+    if (!result) {
+      return res.json({ paired: false, message: 'No other device found under this account. Register the other device first.' });
+    }
+
+    res.json({
+      paired: true,
+      pairing: {
+        device_1: result.device_1_id,
+        device_2: result.device_2_id
+      },
+      otherDevice: result.otherDevice
+    });
+  } catch (error) {
+    console.error('Auto-pair error:', error);
+    res.status(error.statusCode || 500).json({ error: error.message || 'Auto-pair failed' });
+  }
+});
+
 // Unpair devices
 router.post('/devices/unpair', authMiddleware, async (req, res) => {
   try {

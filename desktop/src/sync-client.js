@@ -3,8 +3,13 @@
  * Handles device pairing, data sync, and system monitoring
  */
 
-const BACKEND_URL = "https://danbron-production.up.railway.app/api"; // Danbron Railway backend
+const DEFAULT_BACKEND_URL = "https://danbron-production.up.railway.app/api"; // Danbron Backend (Railway)
 const API_TIMEOUT = 30000; // 30 seconds
+
+function normalizeBackendUrl(url) {
+  const cleaned = String(url || DEFAULT_BACKEND_URL).trim().replace(/\/+$/, '');
+  return cleaned.endsWith('/api') ? cleaned : `${cleaned}/api`;
+}
 
 // Storage keys
 const STORAGE_KEYS = {
@@ -17,11 +22,17 @@ const STORAGE_KEYS = {
 
 class DanbronSyncClient {
   constructor() {
+    this.baseUrl = normalizeBackendUrl(localStorage.getItem('danbron_backend_url') || DEFAULT_BACKEND_URL);
     this.token = localStorage.getItem(STORAGE_KEYS.AUTH_TOKEN);
     this.userId = localStorage.getItem(STORAGE_KEYS.USER_ID);
     this.deviceId = localStorage.getItem(STORAGE_KEYS.DEVICE_ID);
     this.pairedDeviceId = localStorage.getItem(STORAGE_KEYS.PAIRED_DEVICE_ID);
     this.listeners = new Map();
+  }
+
+  configureBaseUrl(url) {
+    this.baseUrl = normalizeBackendUrl(url);
+    localStorage.setItem('danbron_backend_url', this.baseUrl);
   }
 
   /**
@@ -76,8 +87,16 @@ class DanbronSyncClient {
    * Get pairing code for current device
    */
   async getPairingCode() {
-    const device = await this.registerDevice();
-    return device.pairingCode;
+    if (!this.token) throw new Error('Not authenticated');
+    if (!this.deviceId) {
+      const device = await this.registerDevice();
+      return device.pairingCode;
+    }
+
+    const response = await this.post('/devices/pairing-code', {
+      deviceId: this.deviceId
+    }, this.token);
+    return response.device.pairingCode;
   }
 
   /**
@@ -112,6 +131,25 @@ class DanbronSyncClient {
   }
 
   /**
+   * Auto-pair with another device under the same account
+   */
+  async autoPair() {
+    if (!this.token || !this.deviceId) throw new Error('Not authenticated or no device');
+
+    const response = await this.post('/devices/auto-pair', {
+      deviceId: this.deviceId
+    }, this.token);
+
+    if (response.paired) {
+      this.pairedDeviceId = response.otherDevice.id;
+      localStorage.setItem(STORAGE_KEYS.PAIRED_DEVICE_ID, this.pairedDeviceId);
+      this.emit('device_paired', { pairedDeviceId: this.pairedDeviceId });
+      return response;
+    }
+    return null;
+  }
+
+  /**
    * Check if another device is paired
    */
   async checkPairedDevice() {
@@ -126,6 +164,8 @@ class DanbronSyncClient {
         return response.device;
       }
 
+      this.pairedDeviceId = null;
+      localStorage.removeItem(STORAGE_KEYS.PAIRED_DEVICE_ID);
       return null;
     } catch (error) {
       console.error('Failed to check paired device:', error);
@@ -198,6 +238,36 @@ class DanbronSyncClient {
     }
   }
 
+  async syncSharedState(sharedState) {
+    if (!this.token || !this.deviceId) throw new Error('Device not configured');
+
+    const response = await this.post(
+      '/sync/state',
+      {
+        deviceId: this.deviceId,
+        state: sharedState
+      },
+      this.token
+    );
+
+    localStorage.setItem(STORAGE_KEYS.LAST_SYNC, new Date().toISOString());
+    this.emit('shared_state_synced', { synced: true, state: response.state });
+    return response.state;
+  }
+
+  async getSharedState() {
+    if (!this.token || !this.deviceId) return null;
+
+    try {
+      const response = await this.get('/sync/state', { deviceId: this.deviceId }, this.token);
+      this.emit('shared_state_received', { state: response.state });
+      return response.state;
+    } catch (error) {
+      console.error('Failed to get shared state:', error);
+      return null;
+    }
+  }
+
   /**
    * Record a system event
    */
@@ -222,6 +292,45 @@ class DanbronSyncClient {
     }
   }
 
+  async sendRemoteCommand(command) {
+    if (!this.token || !this.deviceId) throw new Error('Device not configured');
+
+    const commandEvent = {
+      id: command.id || `cmd_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+      sourceDeviceId: this.deviceId,
+      target: command.target || 'paired',
+      action: command.action,
+      args: command.args || {},
+      status: 'queued',
+      requiresConfirmation: !!command.requiresConfirmation,
+      createdAt: new Date().toISOString()
+    };
+
+    await this.recordSystemEvent('remote_command', commandEvent);
+    return commandEvent;
+  }
+
+  async recordCommandResult(commandId, status, result = {}) {
+    if (!commandId) return;
+    await this.recordSystemEvent('remote_command_result', {
+      commandId,
+      status,
+      result,
+      completedAt: new Date().toISOString()
+    });
+  }
+
+  async getRemoteCommands(limit = 25) {
+    const events = await this.getRecentEvents(limit);
+    return events
+      .filter(event => event.event_type === 'remote_command' && event.event_data)
+      .map(event => ({
+        ...event.event_data,
+        eventId: event.id,
+        timestamp: event.timestamp
+      }));
+  }
+
   /**
    * Get recent events
    */
@@ -240,6 +349,14 @@ class DanbronSyncClient {
       console.error('Failed to get events:', error);
       return [];
     }
+  }
+
+  /**
+   * AI chat proxy (backend)
+   */
+  async aiChat(payload = {}) {
+    if (!this.token) throw new Error('Not authenticated');
+    return await this.post('/ai/chat', payload, this.token);
   }
 
   /**
@@ -270,41 +387,55 @@ class DanbronSyncClient {
       ...(token && { 'Authorization': `Bearer ${token}` })
     };
 
-    const response = await fetch(`${BACKEND_URL}${endpoint}`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-      timeout: API_TIMEOUT
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), API_TIMEOUT);
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || `HTTP ${response.status}`);
+    try {
+      const response = await fetch(`${this.baseUrl}${endpoint}`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+        signal: controller.signal
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+        throw new Error(error.error || `HTTP ${response.status}`);
+      }
+
+      return await response.json();
+    } finally {
+      clearTimeout(timeout);
     }
-
-    return await response.json();
   }
 
   async get(endpoint, params = {}, token = null) {
     const query = new URLSearchParams(params).toString();
-    const url = `${BACKEND_URL}${endpoint}${query ? '?' + query : ''}`;
+    const url = `${this.baseUrl}${endpoint}${query ? '?' + query : ''}`;
 
     const headers = {
       ...(token && { 'Authorization': `Bearer ${token}` })
     };
 
-    const response = await fetch(url, {
-      method: 'GET',
-      headers,
-      timeout: API_TIMEOUT
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), API_TIMEOUT);
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || `HTTP ${response.status}`);
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers,
+        signal: controller.signal
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+        throw new Error(error.error || `HTTP ${response.status}`);
+      }
+
+      return await response.json();
+    } finally {
+      clearTimeout(timeout);
     }
-
-    return await response.json();
   }
 
   /**

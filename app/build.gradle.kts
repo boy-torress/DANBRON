@@ -1,6 +1,13 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+}
+
+val localProperties = Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
 }
 
 android {
@@ -14,8 +21,10 @@ android {
         versionCode = 1
         versionName = "1.0.0"
         
-        buildConfigField("String", "BACKEND_URL", "\"https://danbron-production.up.railway.app/api/\"")
-        buildConfigField("String", "SUPABASE_KEY", "\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlrYWZreW9ham1xbGFwYW1kZnNjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MTI2OTEwODksImV4cCI6MjAyODI2NzA4OX0.8H-8_2Y_UrWxJ2Y0Z1Z1Z1Z1Z1Z1Z1Z1Z1Z1Z1Z1Z1Z\"")
+        val backendUrl = localProperties.getProperty("danbron.backendUrl", "https://danbron-production.up.railway.app/api/")
+        buildConfigField("String", "BACKEND_URL", "\"${backendUrl.replace("\\", "\\\\").replace("\"", "\\\"")}\"")
+        val defaultApiKey = localProperties.getProperty("danbron.defaultApiKey", "backend")
+        buildConfigField("String", "DEFAULT_API_KEY", "\"${defaultApiKey.replace("\\", "\\\\").replace("\"", "\\\"")}\"")
     }
 
     signingConfigs {
@@ -29,7 +38,7 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = true
+            isMinifyEnabled = false
             signingConfig = signingConfigs.getByName("release")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }

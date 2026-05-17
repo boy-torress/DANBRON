@@ -5,9 +5,11 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.danbron.app.api.*
 import com.danbron.app.data.AudioRecorderManager
+import com.danbron.app.data.SpeechRecognitionManager
 import com.danbron.app.data.UserPreferences
 import com.danbron.app.data.VoiceManager
 import com.danbron.app.data.models.*
+import com.danbron.app.sync.DanbronSyncManager
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.io.File
@@ -21,8 +23,10 @@ import java.io.File
  */
 class OnboardingChatViewModel(app: Application) : AndroidViewModel(app) {
     private val prefs = UserPreferences(app)
+    private val syncManager = DanbronSyncManager(app)
     val voiceManager = VoiceManager(app)
     val recorderManager = AudioRecorderManager(app)
+    val speechRecognizer = SpeechRecognitionManager(app)
 
     private val _messages = MutableStateFlow<List<ChatMessage>>(emptyList())
     val messages: StateFlow<List<ChatMessage>> = _messages
@@ -76,30 +80,74 @@ class OnboardingChatViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun startRecording() {
-        if (apiKey.isBlank()) return
-        recorderManager.startRecording()
+        voiceManager.stop()
         _isRecording.value = true
-        voiceManager.stop() // Stop speaking if user interrupts
+
+        if (speechRecognizer.isAvailable) {
+            speechRecognizer.startListening(
+                onResultCallback = { recognizedText ->
+                    _isRecording.value = false
+                    if (recognizedText.isNotBlank()) {
+                        sendMessageInternal(recognizedText)
+                    }
+                },
+                onErrorCallback = { errorMsg ->
+                    _isRecording.value = false
+                    _messages.value = _messages.value + ChatMessage("assistant", errorMsg)
+                    voiceManager.speak(errorMsg)
+                }
+            )
+        } else {
+            if (apiKey.isBlank()) {
+                _isRecording.value = false
+                _messages.value = _messages.value + ChatMessage("assistant", "Reconocimiento de voz no disponible. Escríbeme en su lugar.")
+                voiceManager.speak("No puedo escucharte. Escríbeme.")
+                return
+            }
+            recorderManager.startRecording()
+        }
+    }
+
+    fun toggleRecording() {
+        if (_isRecording.value) {
+            stopRecordingAndSend()
+        } else {
+            startRecording()
+        }
     }
 
     fun stopRecordingAndSend() {
         if (!_isRecording.value) return
+
+        if (speechRecognizer.isListening.value) {
+            speechRecognizer.stopListening()
+            _isRecording.value = false
+            return
+        }
+
         _isRecording.value = false
         val audioFile = recorderManager.stopRecording()
-        if (audioFile != null && audioFile.exists() && audioFile.length() > 1024) {
-            _isTyping.value = true
-            viewModelScope.launch {
-                try {
-                    val text = AiProvider.transcribeAudio(apiKey, audioFile)
-                    if (text.isNotBlank()) {
-                        audioFile.delete()
-                        sendMessageInternal(text)
-                    } else {
-                        _isTyping.value = false
-                    }
-                } catch (e: Exception) {
+        if (audioFile == null || !audioFile.exists() || audioFile.length() < 500) {
+            _messages.value = _messages.value + ChatMessage("assistant", "No alcancé a escucharte. Intenta de nuevo.")
+            voiceManager.speak("No te escuché bien, intenta de nuevo.")
+            return
+        }
+        _isTyping.value = true
+        viewModelScope.launch {
+            try {
+                val text = AiProvider.transcribeAudio(apiKey, audioFile, syncManager.getAuthToken())
+                audioFile.delete()
+                if (text.isNotBlank()) {
+                    sendMessageInternal(text)
+                } else {
+                    _messages.value = _messages.value + ChatMessage("assistant", "No entendí lo que dijiste. ¿Puedes repetirlo?")
+                    voiceManager.speak("No entendí, repítelo por favor.")
                     _isTyping.value = false
                 }
+            } catch (e: Exception) {
+                _messages.value = _messages.value + ChatMessage("assistant", "Tuve un problema escuchándote. Intenta de nuevo o escríbeme.")
+                voiceManager.speak("Tuve un problema. Intenta de nuevo.")
+                _isTyping.value = false
             }
         }
     }
@@ -119,7 +167,7 @@ class OnboardingChatViewModel(app: Application) : AndroidViewModel(app) {
         extractProfileData(text)
 
         // Check if the user clicked "start" and we're ready
-        if (_isReady.value && text.contains("empezar", ignoreCase = true) || text.contains("listo", ignoreCase = true) && exchangeCount >= 5) {
+        if ((_isReady.value && text.contains("empezar", ignoreCase = true)) || (text.contains("listo", ignoreCase = true) && exchangeCount >= 5)) {
             _isReady.value = true
             return
         }
@@ -158,8 +206,27 @@ class OnboardingChatViewModel(app: Application) : AndroidViewModel(app) {
 
         when (phase) {
             OnboardingPhase.NAME -> {
-                // Extract name — usually the first word or the entire response
-                val name = text.trim().split(" ").firstOrNull()?.replaceFirstChar { it.uppercase() } ?: text.trim()
+                // Extract name — strip greetings and filler words first
+                val greetings = listOf("hola", "hey", "buenas", "buenos dias", "buenas tardes", "buenas noches", "que tal", "saludos", "ey", "ei", "hi", "hello")
+                val fillers = listOf("me llamo", "mi nombre es", "soy", "me dicen", "dime", "llamame", "yo soy", "puedes decirme", "me puedes decir")
+                var cleaned = text.trim()
+                // Remove greetings at start
+                for (g in greetings) {
+                    if (cleaned.lowercase().startsWith(g)) {
+                        cleaned = cleaned.substring(g.length).trimStart(',', '!', '.', ' ')
+                    }
+                }
+                // Remove filler phrases
+                for (f in fillers) {
+                    val idx = cleaned.lowercase().indexOf(f)
+                    if (idx >= 0) {
+                        cleaned = cleaned.substring(idx + f.length).trimStart(',', '!', '.', ' ')
+                    }
+                }
+                // Take the first meaningful word as the name
+                val name = cleaned.split(" ", ",", ".").firstOrNull { it.isNotBlank() }?.replaceFirstChar { it.uppercase() }
+                    ?: text.trim().split(" ").lastOrNull()?.replaceFirstChar { it.uppercase() }
+                    ?: text.trim()
                 data["name"] = name
             }
             OnboardingPhase.LIFE_SITUATION -> {
@@ -269,6 +336,7 @@ NOMBRE DEL USUARIO: $name"""
 
         return AiProvider.sendChat(
             apiKey = apiKey,
+            authToken = syncManager.getAuthToken(),
             systemPrompt = systemPrompt,
             messages = apiMessages,
             maxTokens = 200

@@ -1,6 +1,7 @@
 package com.danbron.app.data
 
 import android.content.Context
+import com.danbron.app.BuildConfig
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
@@ -17,7 +18,7 @@ class UserPreferences(private val context: Context) {
 
     companion object {
         // API key configured by the developer — never exposed to users
-        const val DEFAULT_API_KEY = "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"
+        val DEFAULT_API_KEY = BuildConfig.DEFAULT_API_KEY
 
         val USER_JSON = stringPreferencesKey("user_json")
         val API_KEY = stringPreferencesKey("api_key")
@@ -42,7 +43,8 @@ class UserPreferences(private val context: Context) {
     }
 
     val apiKey: Flow<String> = context.dataStore.data.map { prefs ->
-        prefs[API_KEY] ?: DEFAULT_API_KEY
+        val stored = prefs[API_KEY]
+        if (stored.isNullOrBlank() || (stored == "backend" && DEFAULT_API_KEY != "backend")) DEFAULT_API_KEY else stored
     }
 
     val tasks: Flow<List<Task>> = context.dataStore.data.map { prefs ->

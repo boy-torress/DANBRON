@@ -6,32 +6,31 @@
   "build": {
     "frontendDist": "../src",
     "devUrl": "http://localhost:1420",
-    "beforeDevCommand": "",
+    "beforeDevCommand": "npm run serve",
     "beforeBuildCommand": ""
   },
   "app": {
+    "withGlobalTauri": true,
     "windows": [
       {
-        "title": "Danbron — Bron",
-        "width": 420,
-        "height": 700,
+        "title": "Danbron - Bron",
+        "width": 1180,
+        "height": 780,
         "resizable": true,
         "decorations": false,
         "transparent": false,
-        "center": false,
-        "x": 1400,
-        "y": 100,
-        "minWidth": 360,
-        "minHeight": 500
+        "center": true,
+        "minWidth": 960,
+        "minHeight": 640
       }
     ],
     "trayIcon": {
       "iconPath": "icons/icon.png",
       "iconAsTemplate": false,
-      "tooltip": "Danbron — Bron está aquí para ti"
+      "tooltip": "Danbron - Bron esta aqui para ti"
     },
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' https://api.groq.com https://api.anthropic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'"
+      "csp": "default-src 'self'; connect-src 'self' http://localhost:3000 http://127.0.0.1:3000 https://danbron-production.up.railway.app https://ntfy.sh; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; img-src 'self' data: blob:"
     }
   },
   "bundle": {

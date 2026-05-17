@@ -16,6 +16,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -24,6 +26,7 @@ import com.danbron.app.data.models.Note
 import com.danbron.app.ui.components.StaggeredEntrance
 import com.danbron.app.ui.theme.*
 import com.danbron.app.viewmodel.MainViewModel
+import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -178,6 +181,13 @@ private fun NoteEditorModal(
     var content by remember { mutableStateOf(note?.content ?: "") }
     var selectedTag by remember { mutableStateOf(note?.tag ?: "general") }
     val keyboardController = LocalSoftwareKeyboardController.current
+    val titleFocusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(Unit) {
+        delay(250)
+        titleFocusRequester.requestFocus()
+        keyboardController?.show()
+    }
 
     val tags = listOf(
         "general" to "📝 General",
@@ -187,7 +197,7 @@ private fun NoteEditorModal(
     )
 
     Box(
-        Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.8f)).clickable { onDismiss() },
+        Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.8f)),
         contentAlignment = Alignment.BottomCenter
     ) {
         Column(
@@ -195,7 +205,7 @@ private fun NoteEditorModal(
                 .fillMaxHeight(0.75f)
                 .clip(RoundedCornerShape(28.dp, 28.dp, 0.dp, 0.dp))
                 .background(BgSecondary)
-                .clickable(enabled = false) {}
+                .imePadding()
                 .padding(24.dp)
         ) {
             Text(
@@ -226,7 +236,7 @@ private fun NoteEditorModal(
             OutlinedTextField(
                 value = title, onValueChange = { title = it },
                 placeholder = { Text("Título de la nota", color = TextTertiary) },
-                modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth().focusRequester(titleFocusRequester), shape = RoundedCornerShape(12.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = Gold, unfocusedBorderColor = Border,
                     cursorColor = Gold, focusedContainerColor = BgTertiary, unfocusedContainerColor = BgTertiary,

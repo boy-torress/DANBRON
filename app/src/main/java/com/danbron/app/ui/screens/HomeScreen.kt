@@ -34,6 +34,10 @@ fun HomeScreen(vm: MainViewModel, onChatClick: () -> Unit) {
     val greeting = when { hour < 12 -> "Buenos días"; hour < 19 -> "Buenas tardes"; else -> "Buenas noches" }
     val dateFmt = SimpleDateFormat("EEEE d 'de' MMMM", Locale("es")).format(Date())
     val doneCount = tasks.count { it.done }
+    val isDriverProfile = u.workStyle.contains("driver", ignoreCase = true) ||
+        u.lifeSummary.contains("uber", ignoreCase = true) ||
+        u.lifeSummary.contains("chofer", ignoreCase = true) ||
+        u.employmentStatus == "self_employed"
 
     Box(Modifier.fillMaxSize()) {
         Column(
@@ -91,6 +95,14 @@ fun HomeScreen(vm: MainViewModel, onChatClick: () -> Unit) {
 
             Spacer(Modifier.height(16.dp))
 
+            StaggeredEntrance(2) {
+                DanbronOsStatusCard(
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)
+                )
+            }
+
+            Spacer(Modifier.height(10.dp))
+
             // Dynamic Stats based on active modules
             StaggeredEntrance(2) {
                 Row(Modifier.padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -139,6 +151,17 @@ fun HomeScreen(vm: MainViewModel, onChatClick: () -> Unit) {
                 }
             }
 
+            if (isDriverProfile) {
+                StaggeredEntrance(3) {
+                    DriverFinanceCard(
+                        income = u.income,
+                        expenses = u.expenses,
+                        debt = u.debt,
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+                    )
+                }
+            }
+
             // Active module cards (contextual tips)
             activeModules.filter { it.type != ModuleType.DAILY_PLAN && it.type != ModuleType.HABIT_STREAKS && it.type != ModuleType.DEBT_TRACKER }
                 .take(2).forEachIndexed { idx, module ->
@@ -166,6 +189,105 @@ fun HomeScreen(vm: MainViewModel, onChatClick: () -> Unit) {
                     }
                 }
             }
+
+            Spacer(Modifier.height(20.dp))
+
+            // Habits quick view
+            val habits by vm.habits.collectAsState()
+            if (habits.isNotEmpty()) {
+                StaggeredEntrance(12) {
+                    Column(Modifier.padding(horizontal = 20.dp)) {
+                        Text("Habitos de hoy", style = DanbronType.titleMedium, color = TextPrimary)
+                        Spacer(Modifier.height(10.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            habits.take(4).forEach { habit ->
+                                val done = vm.isHabitDoneToday(habit.id)
+                                Box(
+                                    Modifier.weight(1f)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(if (done) Gold.copy(alpha = 0.12f) else BgSecondary)
+                                        .border(1.dp, if (done) Gold.copy(alpha = 0.3f) else Border, RoundedCornerShape(12.dp))
+                                        .clickable { vm.toggleHabitToday(habit.id) }
+                                        .padding(12.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text(if (done) "✅" else "⬜", fontSize = 18.sp)
+                                        Spacer(Modifier.height(4.dp))
+                                        Text(habit.name.take(10), style = DanbronType.caption, color = if (done) Gold else TextSecondary, maxLines = 1)
+                                        if (habit.streak > 0) {
+                                            Text("${habit.streak}d", style = DanbronType.caption, color = Gold)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            // Notes quick preview
+            val notes by vm.notes.collectAsState()
+            if (notes.isNotEmpty()) {
+                StaggeredEntrance(13) {
+                    Column(Modifier.padding(horizontal = 20.dp)) {
+                        Text("Notas recientes", style = DanbronType.titleMedium, color = TextPrimary)
+                        Spacer(Modifier.height(10.dp))
+                        notes.take(3).forEach { note ->
+                            Row(
+                                Modifier.fillMaxWidth().padding(bottom = 6.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(BgSecondary)
+                                    .border(1.dp, Border, RoundedCornerShape(10.dp))
+                                    .padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(when(note.tag) { "finance" -> "💰"; "goal" -> "🎯"; "idea" -> "💡"; else -> "📝" }, fontSize = 14.sp)
+                                Spacer(Modifier.width(10.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(note.title, style = DanbronType.bodySmall.copy(fontWeight = FontWeight.W600), color = TextPrimary, maxLines = 1)
+                                    if (note.content.isNotBlank()) {
+                                        Text(note.content.take(60), style = DanbronType.caption, color = TextTertiary, maxLines = 1)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            // Sync status indicator
+            val isPaired by vm.isPaired.collectAsState()
+            val lastSync by vm.lastSyncTime.collectAsState()
+            StaggeredEntrance(14) {
+                Row(
+                    Modifier.padding(horizontal = 20.dp).fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(if (isPaired) Teal.copy(alpha = 0.06f) else BgSecondary)
+                        .border(1.dp, if (isPaired) Teal.copy(alpha = 0.2f) else Border, RoundedCornerShape(10.dp))
+                        .padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(if (isPaired) "🔗" else "📱", fontSize = 14.sp)
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            if (isPaired) "Sincronizado con tu PC" else "Sin dispositivo vinculado",
+                            style = DanbronType.bodySmall.copy(fontWeight = FontWeight.W500),
+                            color = if (isPaired) Teal else TextTertiary
+                        )
+                        if (isPaired && lastSync.isNotBlank()) {
+                            Text("Ultima sync: $lastSync", style = DanbronType.caption, color = TextTertiary)
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(24.dp))
         }
 
         // Confetti overlay when all tasks done
@@ -179,35 +301,140 @@ fun HomeScreen(vm: MainViewModel, onChatClick: () -> Unit) {
 // ── Adaptive Bron Card with Mascot ──
 
 @Composable
+private fun DanbronOsStatusCard(modifier: Modifier = Modifier) {
+    Column(
+        modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(BgSecondary)
+            .border(1.dp, Border, RoundedCornerShape(16.dp))
+            .padding(16.dp)
+    ) {
+        Text("Bron esta listo para ayudarte", style = DanbronType.titleMedium, color = TextPrimary)
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "Pídeme algo normal: recordar una idea, mirar la pantalla, preparar un plan, abrir una app o mandar una orden al computador.",
+            style = DanbronType.bodySmall,
+            color = TextSecondary
+        )
+        Spacer(Modifier.height(12.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OsPill("Notas")
+            OsPill("Perfil")
+            OsPill("Mirar")
+            OsPill("Tu PC")
+        }
+    }
+}
+
+@Composable
+private fun OsPill(label: String) {
+    Box(
+        Modifier.clip(RoundedCornerShape(999.dp))
+            .background(GoldGlow)
+            .border(1.dp, Gold.copy(alpha = 0.25f), RoundedCornerShape(999.dp))
+            .padding(horizontal = 10.dp, vertical = 5.dp)
+    ) {
+        Text(label, style = DanbronType.caption, color = Gold)
+    }
+}
+
+@Composable
+private fun DriverFinanceCard(
+    income: Double,
+    expenses: Double,
+    debt: Double,
+    modifier: Modifier = Modifier
+) {
+    val free = income - expenses
+    val dailyTarget = if (income > 0) income / 26.0 else 0.0
+    val fuelReserve = if (income > 0) income * 0.18 else 0.0
+    val debtPlan = if (debt > 0 && free > 0) kotlin.math.ceil(debt / (free * 0.6)).toInt() else 0
+
+    Column(
+        modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(BgSecondary)
+            .border(1.dp, Gold.copy(alpha = 0.22f), RoundedCornerShape(18.dp))
+            .padding(18.dp)
+    ) {
+        Text("Driver Finance", style = DanbronType.titleMedium, color = TextPrimary)
+        Spacer(Modifier.height(4.dp))
+        Text("Control semanal para ganancias, horas, viajes y combustible.", style = DanbronType.bodySmall, color = TextSecondary)
+        Spacer(Modifier.height(14.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Box(Modifier.weight(1f)) {
+                StatCard(
+                    "Meta diaria",
+                    "$${String.format("%,.0f", dailyTarget)}",
+                    Gold,
+                    "26 dias activos"
+                )
+            }
+            Box(Modifier.weight(1f)) {
+                StatCard(
+                    "Reserva",
+                    "$${String.format("%,.0f", fuelReserve)}",
+                    Teal,
+                    "bencina/mantencion"
+                )
+            }
+        }
+        if (debtPlan > 0) {
+            Spacer(Modifier.height(12.dp))
+            Text(
+                "Si mantienes el flujo libre actual, Danbron estima salida de deuda en $debtPlan meses usando 60% del excedente.",
+                style = DanbronType.bodySmall,
+                color = TextTertiary
+            )
+        }
+    }
+}
+
+@Composable
 private fun BronCardAdaptive(message: String, mood: BronMood, onClick: () -> Unit) {
     val breathAlpha = breathingAlpha()
 
     Box(
         modifier = Modifier.fillMaxWidth()
-            .clip(RoundedCornerShape(22.dp))
+            .clip(RoundedCornerShape(24.dp))
             .background(
-                androidx.compose.ui.graphics.Brush.linearGradient(
-                    listOf(CardGradientStart, CardGradientEnd)
+                androidx.compose.ui.graphics.Brush.verticalGradient(
+                    listOf(Color(0xFF12121E), Color(0xFF0A0A14))
                 )
             )
-            .border(1.dp, Gold.copy(alpha = breathAlpha), RoundedCornerShape(22.dp))
+            .border(
+                width = 1.dp,
+                brush = androidx.compose.ui.graphics.Brush.linearGradient(
+                    listOf(Gold.copy(alpha = breathAlpha), Gold.copy(alpha = breathAlpha * 0.3f))
+                ),
+                shape = RoundedCornerShape(24.dp)
+            )
             .clickable { onClick() }
             .padding(22.dp)
     ) {
         Column {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                // Mascot instead of static "B" circle
-                BronMascot(mood = mood, size = 42.dp, animated = true)
-                Spacer(Modifier.width(12.dp))
+                BronMascot(mood = mood, size = 44.dp, animated = true)
+                Spacer(Modifier.width(14.dp))
                 Column {
-                    Text("Bron", style = DanbronType.bodyMedium.copy(fontWeight = FontWeight.W600), color = Gold)
-                    Text("Tu asistente personal · ${mood.label.lowercase()}", style = DanbronType.labelSmall.copy(letterSpacing = 0.sp), color = TextTertiary)
+                    Text("Bron", style = DanbronType.titleSmall, color = Gold)
+                    Text("Tu amigo personal · ${mood.label.lowercase()}", style = DanbronType.caption, color = TextTertiary)
                 }
             }
-            Spacer(Modifier.height(14.dp))
-            Text(message, style = DanbronType.bodyLarge.copy(fontWeight = FontWeight.W300), color = TextPrimary)
-            Spacer(Modifier.height(14.dp))
-            Text("Hablar con Bron →", style = DanbronType.labelSmall.copy(letterSpacing = 0.sp, fontWeight = FontWeight.W500), color = Teal)
+            Spacer(Modifier.height(16.dp))
+            Text(message, style = DanbronType.bodyLarge.copy(fontWeight = FontWeight.W300, lineHeight = 24.sp), color = TextPrimary)
+            Spacer(Modifier.height(16.dp))
+            Row(
+                Modifier.clip(RoundedCornerShape(20.dp))
+                    .background(Teal.copy(alpha = 0.08f))
+                    .border(1.dp, Teal.copy(alpha = 0.15f), RoundedCornerShape(20.dp))
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("💬", fontSize = 12.sp)
+                Spacer(Modifier.width(6.dp))
+                Text("Hablar con Bron", style = DanbronType.labelSmall.copy(letterSpacing = 0.sp, fontWeight = FontWeight.W600), color = Teal)
+            }
         }
     }
 }

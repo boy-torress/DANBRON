@@ -259,6 +259,65 @@ const unpairDevices = async (userId, deviceId) => {
     .eq('id', deviceId);
 };
 
+// Auto-pair: find another device under the same user and pair them
+const autoPairByUser = async (userId, currentDeviceId) => {
+  // Get all devices for this user
+  const { data: devices, error } = await supabase
+    .from('devices')
+    .select('*')
+    .eq('user_id', userId)
+    .neq('id', currentDeviceId)
+    .order('created_at', { ascending: false });
+
+  if (error || !devices || devices.length === 0) {
+    return null;
+  }
+
+  // Find a device of a different type to pair with
+  const currentDevice = await getDevice(userId, currentDeviceId);
+  if (!currentDevice) return null;
+
+  const otherDevice = devices.find(d => d.device_type !== currentDevice.device_type) || devices[0];
+
+  // Create the pair
+  const pairedAt = new Date().toISOString();
+
+  // Remove any existing pairs for either device
+  await supabase
+    .from('device_pairs')
+    .delete()
+    .or(`device_1_id.eq.${currentDeviceId},device_2_id.eq.${currentDeviceId},device_1_id.eq.${otherDevice.id},device_2_id.eq.${otherDevice.id}`);
+
+  const { data: pairData, error: pairError } = await supabase
+    .from('device_pairs')
+    .insert({
+      device_1_id: currentDeviceId,
+      device_2_id: otherDevice.id,
+      user_id: userId,
+      paired_at: pairedAt
+    })
+    .select()
+    .single();
+
+  if (pairError) throw pairError;
+
+  await supabase
+    .from('devices')
+    .update({ paired_at: pairedAt })
+    .in('id', [currentDeviceId, otherDevice.id]);
+
+  return {
+    pairId: pairData.id,
+    device_1_id: currentDeviceId,
+    device_2_id: otherDevice.id,
+    otherDevice: {
+      id: otherDevice.id,
+      device_type: otherDevice.device_type,
+      device_name: otherDevice.device_name
+    }
+  };
+};
+
 module.exports = {
   generatePairingCode,
   getDevice,
@@ -267,5 +326,6 @@ module.exports = {
   pairDevices,
   createPairForKnownDevices,
   getPairedDevice,
-  unpairDevices
+  unpairDevices,
+  autoPairByUser
 };

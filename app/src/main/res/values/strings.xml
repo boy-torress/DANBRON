@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Danbron</string>
+    <string name="accessibility_service_description">Permite que Bron vea lo que hay en tu pantalla para ayudarte mejor. Por ejemplo, puede leer tus ganancias de Uber, resumir mensajes de WhatsApp, o decirte que tienes abierto. Bron solo actua cuando tu se lo pides.</string>
 </resources>

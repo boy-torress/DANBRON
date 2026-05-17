@@ -4,11 +4,13 @@
   "description": "Danbron Desktop — Tu asistente Bron nativo para Windows",
   "scripts": {
     "dev": "tauri dev",
+    "serve": "http-server src -p 1420 -c-1",
     "build": "tauri build",
     "tauri": "tauri"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2.0.0"
+    "@tauri-apps/cli": "^2.0.0",
+    "http-server": "^14.1.1"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.0.0"
