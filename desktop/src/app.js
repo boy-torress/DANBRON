@@ -147,6 +147,7 @@ async function initApp() {
         reconcileBackendSession();
         await continueAfterPermissionGate();
         startMascotAnimation();
+        if (state.isPaired) startClipboardSync();
         updateConnectionStatus('online');
     } catch (error) {
         console.warn('Init flow failed:', error);
@@ -186,6 +187,7 @@ async function initSyncClients() {
             state.pairedDeviceId = data.pairedDeviceId;
             await checkPairedDevice();
             saveState();
+            startClipboardSync();
             showNotification('Tu telefono ya esta conectado.');
         });
 
@@ -234,6 +236,58 @@ function updateOrchestratorBridge() {
     if (window.BronOrchestrator && !window.__DANBRON_ORCHESTRATOR_READY__) {
         window.BronOrchestrator.init(state);
         window.__DANBRON_ORCHESTRATOR_READY__ = true;
+    }
+}
+
+// ── Clipboard Sync ──
+let lastClipboardContent = '';
+let clipboardSyncInterval = null;
+
+function startClipboardSync() {
+    if (clipboardSyncInterval || !isTauri()) return;
+    
+    clipboardSyncInterval = setInterval(async () => {
+        if (!syncClient?.token || !syncClient?.deviceId || !state.isPaired) return;
+        
+        try {
+            // Read current clipboard via PowerShell
+            const currentClip = await invokeTauri('run_shell_command', {
+                cmd: 'powershell.exe',
+                args: ['-NoProfile', '-Command', 'Get-Clipboard']
+            });
+            
+            const clipText = String(currentClip || '').trim();
+            if (clipText && clipText !== lastClipboardContent && clipText.length < 50000) {
+                lastClipboardContent = clipText;
+                // Push to backend
+                await syncClient.post('/sync/clipboard', {
+                    deviceId: syncClient.deviceId,
+                    content: clipText,
+                    contentType: 'text'
+                }, syncClient.token);
+            }
+        } catch (_) {}
+        
+        // Check if paired device has new clipboard
+        try {
+            const remote = await syncClient.get('/sync/clipboard', { deviceId: syncClient.deviceId }, syncClient.token);
+            if (remote?.content && remote.content !== lastClipboardContent) {
+                lastClipboardContent = remote.content;
+                // Set local clipboard via PowerShell
+                await invokeTauri('run_shell_command', {
+                    cmd: 'powershell.exe',
+                    args: ['-NoProfile', '-Command', `Set-Clipboard -Value '${remote.content.replace(/'/g, "''")}'`]
+                });
+                showNotification('Clipboard sincronizado desde tu telefono');
+            }
+        } catch (_) {}
+    }, 3000); // Check every 3 seconds
+}
+
+function stopClipboardSync() {
+    if (clipboardSyncInterval) {
+        clearInterval(clipboardSyncInterval);
+        clipboardSyncInterval = null;
     }
 }
 
@@ -713,11 +767,81 @@ function showChat() {
             timestamp: Date.now()
         });
         saveState();
+        // Trigger morning briefing in background
+        generateMorningBriefing();
     }
 
     renderSuggestionChips();
     renderMessages();
     $('chatInput')?.focus();
+}
+
+async function generateMorningBriefing() {
+    try {
+        const hour = new Date().getHours();
+        const name = state.userName || 'amigo';
+        const today = new Date().toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' });
+
+        // Gather context
+        let context = `Hoy es ${today}.\n`;
+        
+        // Tasks pending
+        const tasks = state.tasks || [];
+        const pending = tasks.filter(t => !t.completed);
+        if (pending.length > 0) {
+            context += `Tareas pendientes: ${pending.map(t => t.title || t.text).join(', ')}.\n`;
+        }
+
+        // Habits
+        const habits = state.habits || [];
+        if (habits.length > 0) {
+            context += `Habitos activos: ${habits.map(h => h.name || h.title).join(', ')}.\n`;
+        }
+
+        // Notes recent
+        const notes = (state.notes || []).slice(-3);
+        if (notes.length > 0) {
+            context += `Ultimas notas: ${notes.map(n => (n.content || n.text || '').substring(0, 40)).join(' | ')}.\n`;
+        }
+
+        // PC context
+        if (systemTracker) {
+            try {
+                const pcCtx = systemTracker.getSnapshot?.() || {};
+                if (pcCtx.battery) context += `Bateria: ${pcCtx.battery}%.\n`;
+                if (pcCtx.activeWindow) context += `App activa: ${pcCtx.activeWindow}.\n`;
+            } catch (_) {}
+        }
+
+        // Only do briefing in morning/afternoon first open
+        const lastBriefing = localStorage.getItem('danbron_last_briefing_date');
+        const todayStr = new Date().toDateString();
+        if (lastBriefing === todayStr) return; // Already briefed today
+        if (hour < 5 || hour > 14) return; // Only brief in morning
+
+        localStorage.setItem('danbron_last_briefing_date', todayStr);
+
+        // Use AI to generate briefing
+        const briefingPrompt = `Eres Bron, asistente personal de ${name}. Genera un BREVE resumen matutino (maximo 3-4 lineas) con tono amigable y natural. Contexto del usuario:\n${context}\nDa un resumen motivador del dia, menciona tareas pendientes si hay, y un tip o animo. NO uses emojis excesivos. Habla como amigo cercano.`;
+        
+        const briefingResponse = await rawAICall([
+            { role: 'system', content: briefingPrompt },
+            { role: 'user', content: 'Dame mi briefing de hoy' }
+        ]);
+        
+        if (briefingResponse && briefingResponse.length > 20) {
+            state.messages.push({
+                role: 'assistant',
+                content: `📋 *Tu briefing del dia:*\n\n${briefingResponse}`,
+                time: formatTime(),
+                timestamp: Date.now()
+            });
+            saveState();
+            renderMessages();
+        }
+    } catch (e) {
+        console.debug('Morning briefing failed:', e);
+    }
 }
 
 function showContext() {

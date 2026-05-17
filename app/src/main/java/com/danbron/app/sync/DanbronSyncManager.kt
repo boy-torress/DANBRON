@@ -38,6 +38,18 @@ interface DanbronSyncApi {
         @Query("deviceId") deviceId: String
     ): PairedDeviceResponse
 
+    @POST("sync/clipboard")
+    suspend fun pushClipboard(
+        @Header("Authorization") token: String,
+        @Body body: ClipboardRequest
+    ): ClipboardSyncResponse
+
+    @GET("sync/clipboard")
+    suspend fun getClipboard(
+        @Header("Authorization") token: String,
+        @Query("deviceId") deviceId: String
+    ): ClipboardContent
+
     @POST("devices/auto-pair")
     suspend fun autoPairDevices(
         @Header("Authorization") token: String,
@@ -158,6 +170,22 @@ data class PairedDeviceInfo(
     val deviceType: String,
     val deviceName: String,
     val lastSync: String
+)
+
+data class ClipboardRequest(
+    val deviceId: String,
+    val content: String,
+    val contentType: String = "text"
+)
+
+data class ClipboardSyncResponse(
+    val synced: Boolean
+)
+
+data class ClipboardContent(
+    val content: String? = null,
+    val contentType: String? = null,
+    val updatedAt: String? = null
 )
 
 data class AutoPairRequest(
@@ -502,6 +530,20 @@ class DanbronSyncManager(context: Context) {
             addProperty("completedAt", System.currentTimeMillis())
         }
         recordSystemEvent("remote_command_result", eventData)
+    }
+
+    // ── Clipboard Sync ──
+    suspend fun pushClipboard(content: String) {
+        val token = authToken.firstOrNull() ?: return
+        val devId = deviceId.firstOrNull() ?: return
+        api.pushClipboard("Bearer $token", ClipboardRequest(devId, content, "text"))
+    }
+
+    suspend fun pullClipboard(): String? {
+        val token = authToken.firstOrNull() ?: return null
+        val devId = deviceId.firstOrNull() ?: return null
+        val response = api.getClipboard("Bearer $token", devId)
+        return response.content
     }
 
     fun hasPairedDevice(): Boolean = !pairedDeviceId.firstOrNull().isNullOrBlank()

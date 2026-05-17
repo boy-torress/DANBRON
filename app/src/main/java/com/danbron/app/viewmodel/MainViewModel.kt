@@ -7,6 +7,7 @@ import com.danbron.app.api.*
 import com.danbron.app.data.UserPreferences
 import com.danbron.app.data.models.*
 import com.danbron.app.engine.AdaptiveEngine
+import com.danbron.app.sync.ClipboardSyncManager
 import com.danbron.app.sync.DanbronSyncManager
 import com.danbron.app.util.HapticManager
 import com.danbron.app.util.ReferralManager
@@ -25,6 +26,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val prefs = UserPreferences(app)
     private val ctx = app
     private val syncManager = DanbronSyncManager(app)
+    private val clipboardSync = ClipboardSyncManager(app, syncManager)
     private val gson = Gson()
     private var applyingRemoteState = false
 
@@ -457,6 +459,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _pairingStatus.value = "paired"
         _pairedDeviceName.value = "Windows PC"
         _lastSyncTime.value = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
+        clipboardSync.start()
     }
 
     fun rePushSyncProfile() {

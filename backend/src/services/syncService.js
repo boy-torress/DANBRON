@@ -299,6 +299,48 @@ const getEventsSinceLastSync = async (userId, deviceId, lastSyncTime) => {
   return data || [];
 };
 
+// ── Clipboard Sync ──
+const setClipboard = async (userId, deviceId, content, contentType = 'text') => {
+  const { error } = await supabase
+    .from('clipboard_sync')
+    .upsert({
+      user_id: userId,
+      device_id: deviceId,
+      content,
+      content_type: contentType,
+      updated_at: nowIso()
+    }, { onConflict: 'user_id,device_id' });
+
+  if (error) {
+    // Table might not exist yet, use events as fallback
+    await recordSystemEvent(userId, [deviceId], 'clipboard_update', {
+      content,
+      contentType,
+      ts: Date.now()
+    });
+  }
+};
+
+const getClipboard = async (userId, deviceId) => {
+  const { data, error } = await supabase
+    .from('clipboard_sync')
+    .select('content, content_type, updated_at')
+    .eq('user_id', userId)
+    .eq('device_id', deviceId)
+    .single();
+
+  if (error || !data) {
+    // Fallback: check events
+    const events = await getRecentEvents(userId, [deviceId], 5);
+    const clipEvent = events.find(e => e.event_type === 'clipboard_update');
+    if (clipEvent?.event_data) {
+      return { content: clipEvent.event_data.content, contentType: clipEvent.event_data.contentType, updatedAt: clipEvent.timestamp };
+    }
+    return null;
+  }
+  return { content: data.content, contentType: data.content_type, updatedAt: data.updated_at };
+};
+
 module.exports = {
   syncUserData,
   getUserData,
@@ -306,5 +348,7 @@ module.exports = {
   getSharedState,
   recordSystemEvent,
   getRecentEvents,
-  getEventsSinceLastSync
+  getEventsSinceLastSync,
+  setClipboard,
+  getClipboard
 };

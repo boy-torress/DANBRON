@@ -226,4 +226,51 @@ router.get('/sync/events/since', authMiddleware, async (req, res) => {
   }
 });
 
+// ── Clipboard Sync ──
+// Store clipboard content for cross-device sync
+router.post('/sync/clipboard', authMiddleware, async (req, res) => {
+  try {
+    const { deviceId, content, contentType } = req.body;
+    const userId = req.user.userId;
+
+    if (!deviceId || !content) {
+      return res.status(400).json({ error: 'deviceId and content required' });
+    }
+    assertUuid(deviceId, 'deviceId');
+    if (typeof content !== 'string' || content.length > 50000) {
+      return res.status(400).json({ error: 'content must be string under 50KB' });
+    }
+
+    await syncService.setClipboard(userId, deviceId, content, contentType || 'text');
+    res.json({ synced: true });
+  } catch (error) {
+    console.error('Clipboard sync error:', error);
+    res.status(error.statusCode || 500).json({ error: error.message || 'Clipboard sync failed' });
+  }
+});
+
+// Get latest clipboard from paired device
+router.get('/sync/clipboard', authMiddleware, async (req, res) => {
+  try {
+    const { deviceId } = req.query;
+    const userId = req.user.userId;
+
+    if (!deviceId) {
+      return res.status(400).json({ error: 'deviceId required' });
+    }
+    assertUuid(deviceId, 'deviceId');
+
+    const pairedDevice = await deviceService.getPairedDevice(userId, deviceId);
+    if (!pairedDevice) {
+      return res.json({ content: null });
+    }
+
+    const clipboard = await syncService.getClipboard(userId, pairedDevice.id);
+    res.json(clipboard || { content: null });
+  } catch (error) {
+    console.error('Get clipboard error:', error);
+    res.status(error.statusCode || 500).json({ error: error.message || 'Get clipboard failed' });
+  }
+});
+
 module.exports = router;
