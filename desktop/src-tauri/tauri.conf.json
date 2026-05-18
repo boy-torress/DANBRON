@@ -30,7 +30,7 @@
       "tooltip": "Danbron - Bron esta aqui para ti"
     },
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' http://localhost:3000 http://127.0.0.1:3000 https://danbron-production.up.railway.app https://ntfy.sh; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; img-src 'self' data: blob:"
+      "csp": "default-src 'self'; connect-src 'self' http://localhost:* http://127.0.0.1:* https://*.railway.app https://danbron-production.up.railway.app https://ntfy.sh https://*; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; img-src 'self' data: blob:"
     }
   },
   "bundle": {

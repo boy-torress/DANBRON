@@ -6,6 +6,8 @@ use tauri::{
     menu::{Menu, MenuItem},
 };
 use std::process::Command;
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
 use std::{
     collections::HashSet,
     env,
@@ -16,6 +18,9 @@ use std::{
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
+
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 #[tauri::command]
 fn window_minimize(window: tauri::Window) -> Result<(), String> {
@@ -73,16 +78,53 @@ fn run_shell_command(cmd: String, args: Vec<String>) -> Result<String, String> {
         return Err("Only PowerShell commands are allowed".to_string());
     }
 
-    let output = Command::new(cmd)
-        .args(args)
-        .output()
-        .map_err(|err| err.to_string())?;
+    let mut command = Command::new(cmd);
+    command.args(args);
+    #[cfg(target_os = "windows")]
+    command.creation_flags(CREATE_NO_WINDOW);
+    let output = command.output().map_err(|err| err.to_string())?;
 
     if !output.status.success() {
         return Err(decode_command_output(&output.stderr));
     }
 
     Ok(decode_command_output(&output.stdout))
+}
+
+#[tauri::command]
+fn http_request(method: String, url: String, headers: Option<std::collections::HashMap<String, String>>, body: Option<String>) -> Result<String, String> {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(25))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let mut req = match method.to_uppercase().as_str() {
+        "POST" => client.post(&url),
+        "PUT" => client.put(&url),
+        "DELETE" => client.delete(&url),
+        _ => client.get(&url),
+    };
+
+    if let Some(hdrs) = headers {
+        for (k, v) in hdrs {
+            req = req.header(&k, &v);
+        }
+    }
+
+    if let Some(b) = body {
+        req = req.header("Content-Type", "application/json");
+        req = req.body(b);
+    }
+
+    let response = req.send().map_err(|e| format!("Request failed: {}", e))?;
+    let status = response.status().as_u16();
+    let text = response.text().map_err(|e| e.to_string())?;
+
+    if status >= 400 {
+        return Err(format!("HTTP {}: {}", status, text));
+    }
+
+    Ok(text)
 }
 
 fn read_local_config_value(key: &str) -> Option<String> {
@@ -933,6 +975,7 @@ fn main() {
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
             run_shell_command,
+            http_request,
             proxy_ai_request,
             proxy_ai_deep_request,
             proxy_ai_vision,

@@ -382,60 +382,86 @@ class DanbronSyncClient {
    * HTTP Methods
    */
   async post(endpoint, body, token = null) {
+    const url = `${this.baseUrl}${endpoint}`;
     const headers = {
       'Content-Type': 'application/json',
       ...(token && { 'Authorization': `Bearer ${token}` })
     };
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), API_TIMEOUT);
-
+    // Try fetch first, fallback to PowerShell in Tauri
     try {
-      const response = await fetch(`${this.baseUrl}${endpoint}`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(body),
-        signal: controller.signal
-      });
-
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
-        throw new Error(error.error || `HTTP ${response.status}`);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), API_TIMEOUT);
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(body),
+          signal: controller.signal
+        });
+        if (!response.ok) {
+          const error = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+          throw new Error(error.error || `HTTP ${response.status}`);
+        }
+        return await response.json();
+      } finally {
+        clearTimeout(timeout);
       }
-
-      return await response.json();
-    } finally {
-      clearTimeout(timeout);
+    } catch (fetchError) {
+      // Fallback: use PowerShell in Tauri to bypass CSP/CORS
+      if (typeof window !== 'undefined' && window.__TAURI__) {
+        return await this._tauriRequest('POST', url, headers, body);
+      }
+      throw fetchError;
     }
   }
 
   async get(endpoint, params = {}, token = null) {
     const query = new URLSearchParams(params).toString();
     const url = `${this.baseUrl}${endpoint}${query ? '?' + query : ''}`;
-
     const headers = {
       ...(token && { 'Authorization': `Bearer ${token}` })
     };
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), API_TIMEOUT);
-
     try {
-      const response = await fetch(url, {
-        method: 'GET',
-        headers,
-        signal: controller.signal
-      });
-
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
-        throw new Error(error.error || `HTTP ${response.status}`);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), API_TIMEOUT);
+      try {
+        const response = await fetch(url, {
+          method: 'GET',
+          headers,
+          signal: controller.signal
+        });
+        if (!response.ok) {
+          const error = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+          throw new Error(error.error || `HTTP ${response.status}`);
+        }
+        return await response.json();
+      } finally {
+        clearTimeout(timeout);
       }
-
-      return await response.json();
-    } finally {
-      clearTimeout(timeout);
+    } catch (fetchError) {
+      if (typeof window !== 'undefined' && window.__TAURI__) {
+        return await this._tauriRequest('GET', url, headers, null);
+      }
+      throw fetchError;
     }
+  }
+
+  async _tauriRequest(method, url, headers, body) {
+    const invoke = window.__TAURI__.core?.invoke || window.__TAURI__.invoke;
+    if (!invoke) throw new Error('Tauri invoke not available');
+
+    const result = await invoke('http_request', {
+      method,
+      url,
+      headers: headers || {},
+      body: body ? JSON.stringify(body) : null
+    });
+
+    const text = String(result || '').trim();
+    if (!text) throw new Error('Empty response from backend');
+    return JSON.parse(text);
   }
 
   /**
